@@ -1,0 +1,424 @@
+import { useState } from 'react'
+import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useStore, buildingById } from '../store'
+import { useToasts } from '../lib/toast'
+import type { User } from '../data/seed'
+import { formatEventDateTime } from '../lib/datetime'
+import AccessTypePill from '../components/ui/AccessTypePill'
+import ClubBadge from '../components/ui/ClubBadge'
+import TagChip from '../components/ui/TagChip'
+import Avatar, { AvatarStack } from '../components/ui/Avatar'
+import Fill from '../components/ui/Fill'
+import Button from '../components/ui/Button'
+import SectionHeader from '../components/ui/SectionHeader'
+import EmptyState from '../components/ui/EmptyState'
+import MiniMap from '../components/ui/MiniMap'
+import EditEventModal from '../components/ui/EditEventModal'
+import { PageContainer } from '../components/PageContainer'
+import {
+  CalendarIcon,
+  ClockIcon,
+  CheckIcon,
+  ArrowLeftIcon,
+  MapPinIcon,
+  LockIcon,
+  UserIcon,
+  UsersIcon,
+  UtensilsIcon,
+  ClockIcon as PendingIcon,
+} from '../components/icons'
+import { audienceLabel, canSeeEvent, canManageEvent } from '../lib/visibility'
+
+const HOST_ICON = { individual: UserIcon, club: UsersIcon, eatingClub: UtensilsIcon } as const
+
+export default function EventDetail() {
+  const { id } = useParams()
+  const navigate = useNavigate()
+  const store = useStore()
+  const push = useToasts((s) => s.push)
+  const [editing, setEditing] = useState(false)
+  const [doorQuery, setDoorQuery] = useState('')
+
+  const event = store.events.find((e) => e.id === id)
+
+  if (!event) {
+    return (
+      <PageContainer>
+        <EmptyState
+          icon={<CalendarIcon size={28} />}
+          title="Event not found"
+          message="This event may have been removed."
+          action={
+            <Button size="sm" onClick={() => navigate('/')}>
+              Back to feed
+            </Button>
+          }
+        />
+      </PageContainer>
+    )
+  }
+
+  const me = store.currentUser()
+
+  // Enforce audience on direct links too - not just discovery surfaces.
+  if (!canSeeEvent(event, me)) {
+    return (
+      <PageContainer>
+        <EmptyState
+          icon={<LockIcon size={28} />}
+          title="This event is private"
+          message="It was posted to a specific audience you're not part of."
+          action={
+            <Button size="sm" onClick={() => navigate('/')}>
+              Back to feed
+            </Button>
+          }
+        />
+      </PageContainer>
+    )
+  }
+
+  const building = buildingById[event.buildingId]
+  const { dateLabel, timeLabel } = formatEventDateTime(event.start, event.end)
+
+  const userById = new Map(store.users.map((u) => [u.id, u]))
+  const attendees = event.attendeeIds
+    .map((aid) => userById.get(aid))
+    .filter((u): u is User => Boolean(u))
+
+  const hostClub =
+    event.hostType === 'club' || event.hostType === 'eatingClub'
+      ? store.clubs.find((c) => c.id === event.hostId)
+      : undefined
+  const hostUser = event.hostType === 'individual' ? userById.get(event.hostId) : undefined
+  const HostIcon = HOST_ICON[event.hostType]
+
+  const isAttending = event.attendeeIds.includes(me.id)
+  const myApplicant = event.applicants.find((a) => a.userId === me.id)
+  const isAdmin = me.adminOf.includes(event.hostId)
+  const canManage = canManageEvent(event, me)
+
+  // Door check-in roster (managers only).
+  const checkedIn = new Set(event.checkedInIds ?? [])
+  const doorList = attendees.filter((u) =>
+    u.name.toLowerCase().includes(doorQuery.trim().toLowerCase()),
+  )
+
+  // --- Actions -------------------------------------------------------------
+
+  const onToggleRsvp = () => {
+    if (isAttending) {
+      store.cancelRsvp(event.id)
+      push(event.accessType === 'open' ? "You're no longer going" : 'RSVP canceled', 'neutral')
+    } else {
+      const r = store.rsvp(event.id)
+      if (!r.ok) push(r.reason ?? 'Could not RSVP', 'danger')
+      else push("You're going", 'success')
+    }
+  }
+
+  const onApply = () => {
+    const r = store.applyToEvent(event.id)
+    if (!r.ok) {
+      push(r.reason, 'danger')
+      return
+    }
+    if (r.status === 'auto') push("You're on the list", 'success')
+    else push('Request sent', 'neutral')
+  }
+
+  // --- Primary action state ------------------------------------------------
+
+  const guestState =
+    myApplicant?.status === 'auto'
+      ? 'auto'
+      : myApplicant?.status === 'approved' || (isAttending && !myApplicant)
+        ? 'approved'
+        : myApplicant?.status === 'pending'
+          ? 'pending'
+          : 'none'
+
+  return (
+    <div className="mx-auto max-w-2xl px-4 pt-4 sm:px-6">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <button
+          type="button"
+          onClick={() => navigate(-1)}
+          className="inline-flex items-center gap-1.5 text-[13px] font-medium text-muted transition-colors hover:text-text"
+        >
+          <ArrowLeftIcon size={16} />
+          Back
+        </button>
+        {canManage && (
+          <Button size="sm" variant="secondary" onClick={() => setEditing(true)}>
+            Edit event
+          </Button>
+        )}
+      </div>
+
+      {/* Header */}
+      <div className="flex items-start justify-between gap-3">
+        <h1 className="font-brand text-[24px] font-extrabold leading-tight tracking-tight text-pink-900 sm:text-[28px]">
+          {event.title}
+        </h1>
+        <div className="shrink-0 pt-1">
+          <AccessTypePill type={event.accessType} />
+        </div>
+      </div>
+
+      {/* Host row */}
+      <div className="mt-3 flex items-center gap-2 text-[14px]">
+        <HostIcon size={16} className="shrink-0 text-muted" />
+        {hostClub ? (
+          <Link to={`/club/${hostClub.id}`} className="transition-opacity hover:opacity-80">
+            <ClubBadge club={hostClub} user={me} />
+          </Link>
+        ) : hostUser ? (
+          <span className="flex items-center gap-1.5">
+            <Avatar user={hostUser} size={22} />
+            <span className="text-text">{event.hostName}</span>
+          </span>
+        ) : (
+          <span className="text-text">{event.hostName}</span>
+        )}
+      </div>
+
+      {/* Date / time */}
+      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[14px] text-text">
+        <span className="inline-flex items-center gap-1.5">
+          <CalendarIcon size={16} className="shrink-0 text-muted" />
+          {dateLabel}
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <ClockIcon size={16} className="shrink-0 text-muted" />
+          {timeLabel}
+        </span>
+      </div>
+
+      {/* Audience (restricted posts) */}
+      {audienceLabel(event, store.clubs) && (
+        <p className="mt-3 inline-flex items-center gap-1.5 rounded-md bg-surface px-2.5 py-1.5 text-[13px] font-medium text-text">
+          <LockIcon size={15} className="shrink-0 text-muted" />
+          {audienceLabel(event, store.clubs)}
+        </p>
+      )}
+
+      {/* Tags */}
+      {event.tags.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {event.tags.map((t) => (
+            <TagChip key={t} tagId={t} />
+          ))}
+        </div>
+      )}
+
+      {/* Description */}
+      {event.description && (
+        <p className="mt-4 text-[14px] leading-relaxed text-text">{event.description}</p>
+      )}
+
+      {/* Map - only when we know where the location is; otherwise just its name */}
+      {building && building.lat != null && building.lng != null ? (
+        <div className="mt-5">
+          <MiniMap lat={building.lat} lng={building.lng} name={building.name} />
+        </div>
+      ) : building ? (
+        <div className="mt-5 flex items-center gap-1.5 rounded-md border border-border bg-surface px-3 py-2.5 text-[14px] text-text">
+          <MapPinIcon size={16} className="shrink-0 text-pink-500" />
+          {building.name}
+        </div>
+      ) : null}
+
+      {/* Attendees */}
+      <div className="mt-5 flex items-center gap-3">
+        {attendees.length > 0 ? (
+          <>
+            <AvatarStack users={attendees} max={6} size={28} />
+            <span className="text-[14px] text-text">
+              <span className="font-semibold">{attendees.length}</span>
+              {event.capacity ? ` / ${event.capacity}` : ''} going
+            </span>
+          </>
+        ) : (
+          <span className="text-[14px] text-muted">No one going yet - be the first.</span>
+        )}
+      </div>
+
+      {/* Reservation line */}
+      {event.reservationConfirmed && (
+        <p className="mt-3 inline-flex items-center gap-1.5 text-[13px] font-medium text-[#2E8B67]">
+          <CheckIcon size={16} className="shrink-0" />
+          Space reserved. This location is locked for this event.
+        </p>
+      )}
+
+      {/* Primary action */}
+      <div className="mt-6">
+        {event.accessType === 'guestlist' ? (
+          guestState === 'auto' || guestState === 'approved' ? (
+            <div className="hf-pop flex items-start gap-3 rounded-md border border-success/40 bg-success-bg p-4">
+              <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-success text-white">
+                <CheckIcon size={18} />
+              </span>
+              <div>
+                <p className="text-[15px] font-bold text-[#2E8B67]">You&rsquo;re on the list.</p>
+                {guestState === 'auto' && hostClub && (
+                  <p className="mt-0.5 text-[13px] text-[#2E8B67]">
+                    Auto-accepted with your {hostClub.name} badge.
+                  </p>
+                )}
+              </div>
+            </div>
+          ) : guestState === 'pending' ? (
+            <div className="flex items-center gap-2.5 rounded-md border border-border bg-surface p-4 text-muted">
+              <PendingIcon size={18} className="shrink-0" />
+              <p className="text-[14px]">Request sent. Waiting on an admin.</p>
+            </div>
+          ) : (
+            <Button onClick={onApply}>Request to attend</Button>
+          )
+        ) : isAttending ? (
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="inline-flex items-center gap-1.5 rounded-md bg-success-bg px-3 py-2 text-[14px] font-semibold text-[#2E8B67]">
+              <CheckIcon size={16} />
+              You&rsquo;re going
+            </span>
+            <Button variant="secondary" size="sm" onClick={onToggleRsvp}>
+              {event.accessType === 'open' ? "Can't make it" : 'Cancel RSVP'}
+            </Button>
+          </div>
+        ) : (
+          <Button onClick={onToggleRsvp}>{event.accessType === 'open' ? "I'm going" : 'RSVP'}</Button>
+        )}
+      </div>
+
+      {/* Door check-in (host/admin): search the roster and tap people in at the door */}
+      {canManage && (
+        <section className="mt-8">
+          <SectionHeader
+            title="Door check-in"
+            subtitle={`${checkedIn.size} / ${attendees.length} checked in`}
+          />
+          {attendees.length === 0 ? (
+            <div className="rounded-md border border-border bg-surface px-4 py-6 text-center text-[13px] text-muted">
+              No one is going yet.
+            </div>
+          ) : (
+            <>
+              <input
+                value={doorQuery}
+                onChange={(e) => setDoorQuery(e.target.value)}
+                placeholder="Search attendees by name…"
+                className="mb-2 h-10 w-full rounded-md border border-border bg-white px-3 text-[14px] text-text placeholder:text-muted focus:border-pink-400 focus:outline-none focus:ring-2 focus:ring-pink-300"
+              />
+              <ul className="flex flex-col gap-2">
+                {doorList.map((u) => {
+                  const inHere = checkedIn.has(u.id)
+                  return (
+                    <li
+                      key={u.id}
+                      className={`flex items-center gap-3 rounded-md border p-3 shadow-hoagie ${
+                        inHere ? 'border-success bg-success-bg' : 'border-border bg-white'
+                      }`}
+                    >
+                      <Avatar user={u} size={32} />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-[14px] font-medium text-text">{u.name}</p>
+                        <p className="text-[12px] text-muted">Class of {u.classYear}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => store.toggleCheckIn(event.id, u.id)}
+                        className={`inline-flex shrink-0 items-center gap-1.5 rounded-md border px-3 py-1.5 text-[13px] font-semibold transition-colors ${
+                          inHere
+                            ? 'border-success bg-white text-[#2E8B67]'
+                            : 'border-border bg-white text-text hover:bg-surface'
+                        }`}
+                      >
+                        {inHere ? (
+                          <>
+                            <CheckIcon size={15} />
+                            Checked in
+                          </>
+                        ) : (
+                          'Check in'
+                        )}
+                      </button>
+                    </li>
+                  )
+                })}
+                {doorList.length === 0 && (
+                  <li className="rounded-md border border-border bg-surface px-4 py-4 text-center text-[13px] text-muted">
+                    No attendees match &ldquo;{doorQuery}&rdquo;.
+                  </li>
+                )}
+              </ul>
+            </>
+          )}
+        </section>
+      )}
+
+      {/* Manage guestlist (admins of the host club) */}
+      {isAdmin && event.accessType === 'guestlist' && (
+        <section className="mt-8">
+          <SectionHeader
+            title="Manage guestlist"
+            subtitle={`${event.applicants.filter((a) => a.status === 'pending').length} pending`}
+          />
+          {event.applicants.length === 0 ? (
+            <div className="rounded-md border border-border bg-surface px-4 py-6 text-center text-[13px] text-muted">
+              No requests yet.
+            </div>
+          ) : (
+            <ul className="flex flex-col gap-2">
+              {event.applicants.map((a) => {
+                const u = userById.get(a.userId)
+                if (!u) return null
+                return (
+                  <li
+                    key={a.userId}
+                    className="flex items-center gap-3 rounded-md border border-border bg-white p-3 shadow-hoagie"
+                  >
+                    <Avatar user={u} size={32} />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[14px] font-medium text-text">{u.name}</p>
+                    </div>
+                    {a.status === 'pending' ? (
+                      <div className="flex items-center gap-2">
+                        <Button
+                          size="sm"
+                          onClick={() => {
+                            store.approveApplicant(event.id, u.id)
+                            push(`Approved ${u.name}`, 'success')
+                          }}
+                        >
+                          Approve
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => {
+                            store.denyApplicant(event.id, u.id)
+                            push(`Removed ${u.name}`, 'neutral')
+                          }}
+                        >
+                          Deny
+                        </Button>
+                      </div>
+                    ) : (
+                      <Fill fill="green">
+                        {a.status === 'auto' ? 'Auto-accepted' : 'Approved'}
+                      </Fill>
+                    )}
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </section>
+      )}
+
+      {editing && <EditEventModal event={event} onClose={() => setEditing(false)} />}
+    </div>
+  )
+}
