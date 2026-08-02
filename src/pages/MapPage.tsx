@@ -16,6 +16,8 @@ const pillLabel = (d: Date, now: Date) =>
 
 export default function MapPage() {
   const store = useStore()
+  // Start closer in - and a lot closer on desktop where there's room.
+  const [initialZoom] = useState(() => (window.innerWidth >= 768 ? 17 : 16))
   const [showReserved, setShowReserved] = useState(false)
   const [selected, setSelected] = useState<string[]>([])
   const [day, setDay] = useState<string | null>(null)
@@ -71,7 +73,7 @@ export default function MapPage() {
     <div className="relative isolate -mb-24 h-[calc(100dvh-76px)] w-full md:-mb-10">
       <MapContainer
         center={PRINCETON}
-        zoom={15}
+        zoom={initialZoom}
         zoomControl={false}
         scrollWheelZoom
         className="h-full w-full"

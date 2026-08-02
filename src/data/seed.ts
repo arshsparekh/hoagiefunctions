@@ -284,7 +284,7 @@ export const users: User[] = [
       { clubId: 'e-club',  status: 'member' },
     ],
     adminOf: ['e-club'],
-    rsvps: ['ev-brent-faiyaz', 'ev-eclub-gbm'],   // gives the "For You" feed some signal
+    rsvps: ['ev-malcolm-todd', 'ev-eclub-gbm'],   // gives the "For You" feed some signal
     applications: [],
   },
   { id: 'u-maya',  name: 'Maya Chen',      classYear: 2027, avatarColor: '#DE7548',
@@ -395,12 +395,12 @@ export const events: CampusEvent[] = [
 
   // --- Individual-hosted listening party (the "anyone can post" story) ---
   {
-    id: 'ev-brent-faiyaz',
-    title: 'Brent Faiyaz Listening Party',
-    description: 'Wasteland front to back on a real sound system. Floor cushions, low lights, no talking during the deep cuts.',
+    id: 'ev-malcolm-todd',
+    title: 'Malcolm Todd Listening Party',
+    description: 'The new Malcolm Todd record front to back on a real sound system. Floor cushions, low lights, no talking during the deep cuts.',
     hostType: 'individual', hostId: 'u-maya', hostName: 'Maya Chen',
     buildingId: 'b-frist',
-    start: at(0, 20, 0), end: at(0, 22, 0),
+    start: at(0, 21, 0), end: at(0, 23, 0),
     accessType: 'rsvp',
     tags: ['t-listening', 't-arts'],
     reservationConfirmed: false,
