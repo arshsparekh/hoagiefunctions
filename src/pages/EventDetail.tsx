@@ -14,6 +14,7 @@ import SectionHeader from '../components/ui/SectionHeader'
 import EmptyState from '../components/ui/EmptyState'
 import MiniMap from '../components/ui/MiniMap'
 import EditEventModal from '../components/ui/EditEventModal'
+import FollowButton from '../components/ui/FollowButton'
 import { PageContainer } from '../components/PageContainer'
 import {
   CalendarIcon,
@@ -170,14 +171,22 @@ export default function EventDetail() {
       <div className="mt-3 flex items-center gap-2 text-[14px]">
         <HostIcon size={16} className="shrink-0 text-muted" />
         {hostClub ? (
-          <Link to={`/club/${hostClub.id}`} className="transition-opacity hover:opacity-80">
-            <ClubBadge club={hostClub} user={me} />
-          </Link>
+          <>
+            <Link to={`/club/${hostClub.id}`} className="transition-opacity hover:opacity-80">
+              <ClubBadge club={hostClub} user={me} />
+            </Link>
+            <FollowButton id={hostClub.id} name={hostClub.name} size={24} />
+          </>
         ) : hostUser ? (
-          <span className="flex items-center gap-1.5">
-            <Avatar user={hostUser} size={22} />
-            <span className="text-text">{event.hostName}</span>
-          </span>
+          <>
+            <span className="flex items-center gap-1.5">
+              <Avatar user={hostUser} size={22} />
+              <span className="text-text">{event.hostName}</span>
+            </span>
+            {hostUser.id !== me.id && (
+              <FollowButton id={hostUser.id} name={hostUser.name} size={24} />
+            )}
+          </>
         ) : (
           <span className="text-text">{event.hostName}</span>
         )}

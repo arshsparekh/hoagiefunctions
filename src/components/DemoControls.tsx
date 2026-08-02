@@ -4,16 +4,17 @@ import type { ViewAs } from '../store'
 import { useToasts } from '../lib/toast'
 import { XIcon } from './icons'
 
+const REPO_URL = 'https://github.com/arshsparekh/hoagiefunctions'
+
 const OPTIONS: { v: ViewAs; label: string }[] = [
-  { v: 'me', label: 'Me' },
-  { v: 'clubAdmin', label: 'Club admin' },
-  { v: 'newStudent', label: 'New student' },
+  { v: 'me', label: "Arsh Parekh '28" },
+  { v: 'clubAdmin', label: 'Club Admin' },
+  { v: 'newStudent', label: 'New Student' },
 ]
 
 /**
- * Floating demo control (bottom-left, opposite the FAB). Switches the effective
- * viewer and resets the seed so the whole story records in one take. Collapses to
- * a small pill so it stays out of frame when not needed.
+ * Floating demo control (bottom-right). Switches the effective viewer, resets the
+ * seed, and links the repo. Collapses to a small pill so it stays out of frame.
  */
 export default function DemoControls() {
   const viewAs = useStore((s) => s.viewAs)
@@ -22,7 +23,7 @@ export default function DemoControls() {
   const push = useToasts((s) => s.push)
   const [open, setOpen] = useState(false)
 
-  const wrap = 'fixed bottom-[calc(5.5rem+var(--safe-bottom))] left-3 z-40 md:bottom-4'
+  const wrap = 'fixed bottom-[calc(5.5rem+var(--safe-bottom))] right-3 z-40 md:bottom-4'
 
   if (!open) {
     return (
@@ -69,13 +70,22 @@ export default function DemoControls() {
         ))}
       </div>
 
+      <a
+        href={REPO_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="mt-2 flex w-full items-center justify-center rounded-sm border border-border py-1.5 text-[12px] font-medium text-text transition-colors hover:bg-surface"
+      >
+        View GitHub Repo
+      </a>
+
       <button
         type="button"
         onClick={() => {
           resetDemo()
           push('Demo reset', 'neutral')
         }}
-        className="mt-2 w-full rounded-sm border border-border py-1.5 text-[12px] font-medium text-text transition-colors hover:bg-surface active:bg-border-muted"
+        className="mt-1.5 w-full rounded-sm border border-border py-1.5 text-[12px] font-medium text-text transition-colors hover:bg-surface active:bg-border-muted"
       >
         Reset demo
       </button>

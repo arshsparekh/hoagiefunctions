@@ -119,6 +119,9 @@ export interface AppState {
   currentUserId: string
   viewAs: ViewAs
 
+  // Clubs + people the viewer follows (ids; demo-only, powers a notifications story)
+  following: string[]
+
   // Selectors
   currentUser: () => User
   eventsSorted: () => CampusEvent[]
@@ -140,6 +143,7 @@ export interface AppState {
   createEvent: (payload: CreateEventInput) => CreateResult
   updateEvent: (eventId: string, patch: EventEdit) => void
   toggleCheckIn: (eventId: string, userId: string) => void
+  toggleFollow: (id: string) => void
   transferAdmin: (clubId: string, toUserId: string) => ActionResult
   addBuilding: (b: Building) => void
   resetDemo: () => void
@@ -193,6 +197,7 @@ export const useStore = create<AppState>((set, get) => ({
   events: freshEvents(),
   currentUserId: CURRENT_USER_ID,
   viewAs: 'me',
+  following: [],
 
   // --- Selectors -----------------------------------------------------------
 
@@ -431,6 +436,13 @@ export const useStore = create<AppState>((set, get) => ({
       }),
     })),
 
+  toggleFollow: (id) =>
+    set((state) => ({
+      following: state.following.includes(id)
+        ? state.following.filter((x) => x !== id)
+        : [...state.following, id],
+    })),
+
   transferAdmin: (clubId, toUserId) => {
     const me = get().currentUser()
     set((state) => ({
@@ -466,5 +478,6 @@ export const useStore = create<AppState>((set, get) => ({
       events: freshEvents(),
       viewAs: 'me',
       currentUserId: CURRENT_USER_ID,
+      following: [],
     }),
 }))

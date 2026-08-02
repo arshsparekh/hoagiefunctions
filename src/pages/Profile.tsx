@@ -9,7 +9,7 @@ import EventCard from '../components/ui/EventCard'
 import SectionHeader from '../components/ui/SectionHeader'
 import EmptyState from '../components/ui/EmptyState'
 import { canManageEvent } from '../lib/visibility'
-import { GridIcon, CalendarIcon, TicketIcon, ClockIcon } from '../components/icons'
+import { CalendarIcon, TicketIcon, ClockIcon } from '../components/icons'
 
 export default function Profile() {
   const store = useStore()
@@ -79,14 +79,9 @@ export default function Profile() {
         </div>
       </div>
 
-      <p className="mt-4 inline-flex items-center gap-1.5 text-[13px] text-muted">
-        <GridIcon size={14} className="text-pink-400" />
-        Your Hoagie profile carries across every app.
-      </p>
-
       {/* Managing (hosts / club admins) */}
       {managing.length > 0 && (
-        <section className="mt-8">
+        <section className="mt-7">
           <SectionHeader
             title="Events you manage"
             subtitle="Edit details and run the door from any of these"

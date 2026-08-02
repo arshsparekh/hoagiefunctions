@@ -107,6 +107,16 @@
   }
 }
 
+/* Unlayered (beats utility font sizes): iOS zooms in when a focused field is
+   under 16px. Bump form fields to 16px on phones so typing never triggers zoom. */
+@media (max-width: 640px) {
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
+}
+
 /* Leaflet: strip the default white box/border on divIcon markers */
 .leaflet-div-icon.hf-pin {
   background: transparent;

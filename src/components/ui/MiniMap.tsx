@@ -29,7 +29,9 @@ export default function MiniMap({
   zoom?: number
 }) {
   return (
-    <div className="overflow-hidden rounded-md border border-border">
+    // `isolate` keeps Leaflet's high z-index panes contained so modals/overlays
+    // (e.g. the edit-event modal) render above the map instead of under it.
+    <div className="isolate overflow-hidden rounded-md border border-border">
       <MapContainer
         center={[lat, lng]}
         zoom={zoom}

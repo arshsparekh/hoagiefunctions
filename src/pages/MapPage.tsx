@@ -1,55 +1,71 @@
 import { useMemo, useState } from 'react'
 import { MapContainer, TileLayer, Marker, Popup, Tooltip } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
-import { useStore, tags, buildingById } from '../store'
+import { useStore, buildingById } from '../store'
 import type { CampusEvent } from '../data/seed'
 import { buildPinIcon } from '../lib/mapIcons'
 import EventCard from '../components/ui/EventCard'
-import TagChip from '../components/ui/TagChip'
-import Fill from '../components/ui/Fill'
+import TypeFilter from '../components/ui/TypeFilter'
 
 const PRINCETON: [number, number] = [40.3487, -74.6551]
 const WEEK_MS = 7 * 86_400_000
+
+const dayKey = (d: Date) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
+const pillLabel = (d: Date, now: Date) =>
+  dayKey(d) === dayKey(now) ? 'Today' : `${d.toLocaleDateString('en-US', { weekday: 'short' })} ${d.getDate()}`
 
 export default function MapPage() {
   const store = useStore()
   const [showReserved, setShowReserved] = useState(false)
   const [selected, setSelected] = useState<string[]>([])
+  const [day, setDay] = useState<string | null>(null)
+  const now = new Date()
 
-  const { byBuilding, reservedIds } = useMemo(() => {
-    const now = Date.now()
+  const { byBuilding, reservedIds, days } = useMemo(() => {
+    const nowMs = Date.now()
     const passesTag = (e: CampusEvent) =>
       selected.length === 0 || e.tags.some((t) => selected.includes(t))
+    const passesDay = (e: CampusEvent) => day === null || dayKey(new Date(e.start)) === day
 
-    // Only events this user can see, not already finished, matching the filter.
-    const upcoming = store
-      .visibleEvents()
-      .filter((e) => new Date(e.end).getTime() >= now && passesTag(e))
+    // Events this user can see and that haven't finished.
+    const live = store.visibleEvents().filter((e) => new Date(e.end).getTime() >= nowMs)
 
+    // Days with events -> the date strip (from the tag-filtered set).
+    const days = [...new Set(live.filter(passesTag).map((e) => dayKey(new Date(e.start))))]
+      .map((k) => {
+        const [y, m, d] = k.split('-').map(Number)
+        return { key: k, date: new Date(y, m, d) }
+      })
+      .sort((a, b) => a.date.getTime() - b.date.getTime())
+
+    const upcoming = live.filter((e) => passesTag(e) && passesDay(e))
     const byBuilding = new Map<string, CampusEvent[]>()
     const reservedIds = new Set<string>()
     for (const e of upcoming) {
       const list = byBuilding.get(e.buildingId)
       if (list) list.push(e)
       else byBuilding.set(e.buildingId, [e])
-
       if (e.reservationConfirmed) {
         const start = new Date(e.start).getTime()
-        if (start <= now + WEEK_MS) reservedIds.add(e.buildingId)
+        if (start <= nowMs + WEEK_MS) reservedIds.add(e.buildingId)
       }
     }
     for (const list of byBuilding.values()) list.sort((a, b) => (a.start < b.start ? -1 : 1))
-    return { byBuilding, reservedIds }
-  }, [store, selected])
+    return { byBuilding, reservedIds, days }
+  }, [store, selected, day])
 
-  const toggleTag = (id: string) =>
-    setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]))
-
-  // Selected filters jump to the front (right after "All") so they're always visible.
-  const orderedTags = [
-    ...tags.filter((t) => selected.includes(t.id)),
-    ...tags.filter((t) => !selected.includes(t.id)),
-  ]
+  const datePill = (key: string, label: string, active: boolean, onClick: () => void) => (
+    <button
+      key={key}
+      type="button"
+      onClick={onClick}
+      className={`shrink-0 rounded-md px-2.5 py-1.5 text-[13px] font-medium transition-colors ${
+        active ? 'bg-pink-500 text-white' : 'border border-border bg-white text-text hover:border-pink-300'
+      }`}
+    >
+      {label}
+    </button>
+  )
 
   return (
     <div className="relative isolate -mb-24 h-[calc(100dvh-76px)] w-full md:-mb-10">
@@ -97,25 +113,12 @@ export default function MapPage() {
       {/* Floating controls */}
       <div className="pointer-events-none absolute inset-x-0 top-0 z-[1000] p-3">
         <div className="pointer-events-auto mx-auto flex max-w-2xl flex-col gap-2">
-          <div className="no-scrollbar flex gap-2 overflow-x-auto rounded-md bg-white/95 p-2 shadow-hoagie backdrop-blur">
-            <button
-              type="button"
-              onClick={() => setSelected([])}
-              aria-pressed={selected.length === 0}
-              className="rounded-sm transition-transform focus:outline-none active:scale-95"
-            >
-              <Fill fill="neutral" solid={selected.length === 0}>
-                All
-              </Fill>
-            </button>
-            {orderedTags.map((t) => (
-              <TagChip
-                key={t.id}
-                tagId={t.id}
-                active={selected.includes(t.id)}
-                onClick={() => toggleTag(t.id)}
-              />
-            ))}
+          <div className="flex items-center gap-2 rounded-md bg-white/95 p-2 shadow-hoagie backdrop-blur">
+            <TypeFilter selected={selected} onChange={setSelected} />
+            <div className="no-scrollbar flex items-center gap-2 overflow-x-auto">
+              {datePill('all', 'All dates', day === null, () => setDay(null))}
+              {days.map((d) => datePill(d.key, pillLabel(d.date, now), day === d.key, () => setDay(d.key)))}
+            </div>
           </div>
           <button
             type="button"

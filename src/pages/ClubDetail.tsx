@@ -5,6 +5,7 @@ import { useToasts } from '../lib/toast'
 import { FILL_STYLES } from '../lib/fills'
 import type { User } from '../data/seed'
 import EventCard from '../components/ui/EventCard'
+import FollowButton from '../components/ui/FollowButton'
 import Button from '../components/ui/Button'
 import Fill from '../components/ui/Fill'
 import Avatar from '../components/ui/Avatar'
@@ -87,6 +88,7 @@ export default function ClubDetail() {
           {club.name}
         </h1>
         <Fill fill={club.colorFill}>{kindLabel}</Fill>
+        <FollowButton id={club.id} name={club.name} size={26} />
       </div>
       <p className="mt-1 text-[13px] text-muted">{club.memberIds.length} members</p>
       <p className="mt-3 text-[14px] leading-relaxed text-text">{club.description}</p>
