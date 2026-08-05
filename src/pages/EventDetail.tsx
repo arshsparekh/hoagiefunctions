@@ -15,6 +15,7 @@ import EmptyState from '../components/ui/EmptyState'
 import MiniMap from '../components/ui/MiniMap'
 import EditEventModal from '../components/ui/EditEventModal'
 import FollowButton from '../components/ui/FollowButton'
+import SaveButton from '../components/ui/SaveButton'
 import { PageContainer } from '../components/PageContainer'
 import {
   CalendarIcon,
@@ -23,12 +24,14 @@ import {
   ArrowLeftIcon,
   MapPinIcon,
   LockIcon,
+  ShareIcon,
   UserIcon,
   UsersIcon,
   UtensilsIcon,
   ClockIcon as PendingIcon,
 } from '../components/icons'
 import { audienceLabel, canSeeEvent, canManageEvent } from '../lib/visibility'
+import { downloadIcs } from '../lib/ics'
 
 const HOST_ICON = { individual: UserIcon, club: UsersIcon, eatingClub: UtensilsIcon } as const
 
@@ -99,6 +102,11 @@ export default function EventDetail() {
   const isAdmin = me.adminOf.includes(event.hostId)
   const canManage = canManageEvent(event, me)
 
+  const waitlist = event.waitlistIds ?? []
+  const isWaitlisted = waitlist.includes(me.id)
+  const waitlistPos = isWaitlisted ? waitlist.indexOf(me.id) + 1 : 0
+  const isFull = event.capacity !== undefined && event.attendeeIds.length >= event.capacity
+
   // Door check-in roster (managers only).
   const checkedIn = new Set(event.checkedInIds ?? [])
   const doorList = attendees.filter((u) =>
@@ -111,11 +119,42 @@ export default function EventDetail() {
     if (isAttending) {
       store.cancelRsvp(event.id)
       push(event.accessType === 'open' ? "You're no longer going" : 'RSVP canceled', 'neutral')
+    } else if (isWaitlisted) {
+      store.cancelRsvp(event.id)
+      push('Left the waitlist', 'neutral')
     } else {
       const r = store.rsvp(event.id)
-      if (!r.ok) push(r.reason ?? 'Could not RSVP', 'danger')
-      else push("You're going", 'success')
+      if (r.ok) push("You're going", 'success')
+      else if (r.waitlisted) push(r.reason ?? "You're on the waitlist", 'neutral')
+      else push(r.reason ?? 'Could not RSVP', 'danger')
     }
+  }
+
+  const onShare = async () => {
+    const url = `${window.location.origin}/event/${event.id}`
+    try {
+      if (typeof navigator !== 'undefined' && navigator.share) {
+        await navigator.share({ title: event.title, url })
+        return
+      }
+      await navigator.clipboard.writeText(url)
+      push('Link copied', 'success')
+    } catch {
+      /* user dismissed the share sheet - not an error worth surfacing */
+    }
+  }
+
+  const onAddToCalendar = () => {
+    downloadIcs({
+      id: event.id,
+      title: event.title,
+      description: event.description,
+      location: building?.name,
+      start: event.start,
+      end: event.end,
+      url: `${window.location.origin}/event/${event.id}`,
+    })
+    push('Added to your calendar', 'neutral')
   }
 
   const onApply = () => {
@@ -253,6 +292,35 @@ export default function EventDetail() {
         )}
       </div>
 
+      {/* Secondary actions: save, share, add to calendar */}
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        <SaveButton eventId={event.id} variant="labeled" />
+        <button
+          type="button"
+          onClick={onShare}
+          className="inline-flex items-center gap-1.5 rounded-md border border-border bg-white px-3 py-2 text-[13px] font-semibold text-text transition-colors hover:bg-surface"
+        >
+          <ShareIcon size={16} />
+          Share
+        </button>
+        <button
+          type="button"
+          onClick={onAddToCalendar}
+          className="inline-flex items-center gap-1.5 rounded-md border border-border bg-white px-3 py-2 text-[13px] font-semibold text-text transition-colors hover:bg-surface"
+        >
+          <CalendarIcon size={16} />
+          Add to calendar
+        </button>
+      </div>
+
+      {/* Waitlist visibility for managers */}
+      {canManage && waitlist.length > 0 && (
+        <p className="mt-3 inline-flex items-center gap-1.5 text-[13px] font-medium text-muted">
+          <ClockIcon size={15} className="shrink-0" />
+          {waitlist.length} waiting for a spot
+        </p>
+      )}
+
       {/* Reservation line */}
       {event.reservationConfirmed && (
         <p className="mt-3 inline-flex items-center gap-1.5 text-[13px] font-medium text-[#2E8B67]">
@@ -295,6 +363,23 @@ export default function EventDetail() {
             <Button variant="secondary" size="sm" onClick={onToggleRsvp}>
               {event.accessType === 'open' ? "Can't make it" : 'Cancel RSVP'}
             </Button>
+          </div>
+        ) : isWaitlisted ? (
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="inline-flex items-center gap-1.5 rounded-md bg-surface px-3 py-2 text-[14px] font-semibold text-text">
+              <ClockIcon size={16} className="text-muted" />
+              On the waitlist · #{waitlistPos}
+            </span>
+            <Button variant="secondary" size="sm" onClick={onToggleRsvp}>
+              Leave waitlist
+            </Button>
+          </div>
+        ) : isFull ? (
+          <div className="flex flex-col gap-2">
+            <Button onClick={onToggleRsvp}>Join waitlist</Button>
+            <span className="text-[13px] text-muted">
+              This event is at capacity - we&rsquo;ll move you up if a spot opens.
+            </span>
           </div>
         ) : (
           <Button onClick={onToggleRsvp}>{event.accessType === 'open' ? "I'm going" : 'RSVP'}</Button>
@@ -397,8 +482,8 @@ export default function EventDetail() {
                         <Button
                           size="sm"
                           onClick={() => {
-                            store.approveApplicant(event.id, u.id)
-                            push(`Approved ${u.name}`, 'success')
+                            const r = store.approveApplicant(event.id, u.id)
+                            push(r.ok ? `Approved ${u.name}` : (r.reason ?? 'Not allowed'), r.ok ? 'success' : 'danger')
                           }}
                         >
                           Approve
@@ -407,8 +492,8 @@ export default function EventDetail() {
                           size="sm"
                           variant="secondary"
                           onClick={() => {
-                            store.denyApplicant(event.id, u.id)
-                            push(`Removed ${u.name}`, 'neutral')
+                            const r = store.denyApplicant(event.id, u.id)
+                            push(r.ok ? `Removed ${u.name}` : (r.reason ?? 'Not allowed'), 'neutral')
                           }}
                         >
                           Deny

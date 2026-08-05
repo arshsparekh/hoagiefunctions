@@ -1,15 +1,16 @@
 import { Link } from 'react-router-dom'
 import { useStore } from '../store'
-import type { CampusEvent, Club } from '../data/seed'
+import type { CampusEvent, Club, User } from '../data/seed'
 import Avatar from '../components/ui/Avatar'
 import ClassYearBadge from '../components/ui/ClassYearBadge'
 import ClubBadge from '../components/ui/ClubBadge'
 import Fill from '../components/ui/Fill'
 import EventCard from '../components/ui/EventCard'
+import FollowButton from '../components/ui/FollowButton'
 import SectionHeader from '../components/ui/SectionHeader'
 import EmptyState from '../components/ui/EmptyState'
 import { canManageEvent } from '../lib/visibility'
-import { CalendarIcon, TicketIcon, ClockIcon } from '../components/icons'
+import { CalendarIcon, TicketIcon, ClockIcon, BookmarkIcon } from '../components/icons'
 
 export default function Profile() {
   const store = useStore()
@@ -17,8 +18,16 @@ export default function Profile() {
 
   const eventById = new Map(store.events.map((e) => [e.id, e]))
   const clubById = new Map(store.clubs.map((c) => [c.id, c]))
+  const userById = new Map(store.users.map((u) => [u.id, u]))
   const asEvents = (ids: string[]) =>
     ids.map((id) => eventById.get(id)).filter((e): e is CampusEvent => Boolean(e))
+
+  const saved = store.savedEvents()
+  const following = store.myFollowing()
+  const followedClubs = following.map((id) => clubById.get(id)).filter((c): c is Club => Boolean(c))
+  const followedPeople = following
+    .map((id) => userById.get(id))
+    .filter((u): u is User => Boolean(u))
 
   const going = asEvents(me.rsvps)
   const guestlist = asEvents(
@@ -96,7 +105,7 @@ export default function Profile() {
 
       {/* Going */}
       <section className="mt-8">
-        <SectionHeader title="Going" subtitle={going.length ? `${going.length} events` : undefined} />
+        <SectionHeader title="Going" subtitle={going.length ? `${going.length} event${going.length === 1 ? '' : 's'}` : undefined} />
         {going.length === 0 ? (
           <EmptyState
             icon={<CalendarIcon size={26} />}
@@ -112,11 +121,65 @@ export default function Profile() {
         )}
       </section>
 
+      {/* Saved */}
+      <section className="mt-8">
+        <SectionHeader title="Saved" subtitle={saved.length ? `${saved.length} event${saved.length === 1 ? '' : 's'}` : undefined} />
+        {saved.length === 0 ? (
+          <EmptyState
+            icon={<BookmarkIcon size={26} />}
+            title="Nothing saved yet"
+            message="Tap the bookmark on any event to keep it here for later."
+          />
+        ) : (
+          <div className="flex flex-col gap-3">
+            {saved.map((e) => (
+              <EventCard key={e.id} event={e} />
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* Following */}
+      {(followedClubs.length > 0 || followedPeople.length > 0) && (
+        <section className="mt-8">
+          <SectionHeader
+            title="Following"
+            subtitle={`${followedClubs.length + followedPeople.length} total`}
+          />
+          <ul className="flex flex-col gap-2">
+            {followedClubs.map((c) => (
+              <li key={c.id}>
+                <Link
+                  to={`/club/${c.id}`}
+                  className="flex items-center gap-3 rounded-md border border-border bg-white p-3 shadow-hoagie transition-colors hover:border-pink-300"
+                >
+                  <ClubBadge club={c} user={me} />
+                  <span className="ml-auto shrink-0">
+                    <FollowButton id={c.id} name={c.name} size={24} />
+                  </span>
+                </Link>
+              </li>
+            ))}
+            {followedPeople.map((u) => (
+              <li
+                key={u.id}
+                className="flex items-center gap-3 rounded-md border border-border bg-white p-3 shadow-hoagie"
+              >
+                <Avatar user={u} size={30} />
+                <span className="flex-1 truncate text-[14px] font-medium text-text">{u.name}</span>
+                <ClassYearBadge classYear={u.classYear} />
+                <FollowButton id={u.id} name={u.name} size={24} />
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       {/* On the guestlist */}
       <section className="mt-8">
         <SectionHeader
           title="On the guestlist"
-          subtitle={guestlist.length ? `${guestlist.length} events` : undefined}
+          subtitle={guestlist.length ? `${guestlist.length} event${guestlist.length === 1 ? '' : 's'}` : undefined}
         />
         {guestlist.length === 0 ? (
           <EmptyState

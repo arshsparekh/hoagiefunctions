@@ -4,6 +4,7 @@ import TopNav from './TopNav'
 import BottomTabBar from './BottomTabBar'
 import Toaster from './ui/Toaster'
 import DemoControls from './DemoControls'
+import ErrorBoundary from './ErrorBoundary'
 
 /**
  * Layout route: top nav, the routed page, and the mobile bottom tab bar.
@@ -24,7 +25,9 @@ export default function AppShell() {
       <TopNav />
       <main className="flex-1 pb-24 md:pb-10">
         <div key={location.pathname} className="hf-page">
-          <Outlet />
+          <ErrorBoundary resetKey={location.pathname}>
+            <Outlet />
+          </ErrorBoundary>
         </div>
       </main>
       <BottomTabBar />

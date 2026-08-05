@@ -63,7 +63,11 @@ export default function ClubDetail() {
   const onTransfer = () => {
     if (!transferTo) return
     const target = userById.get(transferTo)
-    store.transferAdmin(club.id, transferTo)
+    const r = store.transferAdmin(club.id, transferTo)
+    if (!r.ok) {
+      push(r.reason ?? 'Could not pass admin', 'danger')
+      return
+    }
     push(`Passed admin to ${target?.name ?? 'member'}`, 'success')
     setTransferTo('')
   }
@@ -188,8 +192,8 @@ export default function ClubDetail() {
                     <Button
                       size="sm"
                       onClick={() => {
-                        store.approveMember(club.id, u.id)
-                        push(`Approved ${u.name}`, 'success')
+                        const r = store.approveMember(club.id, u.id)
+                        push(r.ok ? `Approved ${u.name}` : (r.reason ?? 'Not allowed'), r.ok ? 'success' : 'danger')
                       }}
                     >
                       Approve
@@ -198,8 +202,8 @@ export default function ClubDetail() {
                       size="sm"
                       variant="secondary"
                       onClick={() => {
-                        store.denyMember(club.id, u.id)
-                        push(`Denied ${u.name}`, 'neutral')
+                        const r = store.denyMember(club.id, u.id)
+                        push(r.ok ? `Denied ${u.name}` : (r.reason ?? 'Not allowed'), 'neutral')
                       }}
                     >
                       Deny

@@ -7,6 +7,7 @@ import AccessTypePill from './AccessTypePill'
 import ClubBadge from './ClubBadge'
 import TagChip from './TagChip'
 import Avatar, { AvatarStack } from './Avatar'
+import SaveButton from './SaveButton'
 import { CalendarIcon, ClockIcon, MapPinIcon, CheckIcon, LockIcon } from '../icons'
 
 /**
@@ -114,9 +115,10 @@ export default function EventCard({
           <h3 className="text-[15px] font-semibold leading-snug text-pink-900 group-hover:text-pink-700">
             {event.title}
           </h3>
-          <div className="flex shrink-0 items-center gap-1.5">
+          <div className="flex shrink-0 items-center gap-1">
             {goingBadge}
             <AccessTypePill type={event.accessType} />
+            <SaveButton eventId={event.id} size={17} />
           </div>
         </div>
 

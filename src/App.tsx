@@ -7,6 +7,8 @@ import EventDetail from './pages/EventDetail'
 import Profile from './pages/Profile'
 import ClubDetail from './pages/ClubDetail'
 import Create from './pages/Create'
+import Search from './pages/Search'
+import Notifications from './pages/Notifications'
 import NotFound from './pages/NotFound'
 
 export default function App() {
@@ -21,6 +23,8 @@ export default function App() {
           <Route path="profile" element={<Profile />} />
           <Route path="club/:id" element={<ClubDetail />} />
           <Route path="create" element={<Create />} />
+          <Route path="search" element={<Search />} />
+          <Route path="notifications" element={<Notifications />} />
           <Route path="*" element={<NotFound />} />
         </Route>
       </Routes>
