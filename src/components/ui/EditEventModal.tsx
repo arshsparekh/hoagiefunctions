@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useStore, tags } from '../../store'
 import { useToasts } from '../../lib/toast'
 import type { AccessType, CampusEvent } from '../../data/seed'
@@ -30,10 +30,41 @@ export default function EditEventModal({ event, onClose }: { event: CampusEvent;
   const [selectedTags, setSelectedTags] = useState<string[]>(event.tags)
   const [hasReservation, setHasReservation] = useState(event.reservationConfirmed)
 
+  const dialogRef = useRef<HTMLFormElement>(null)
+  const titleInputRef = useRef<HTMLInputElement>(null)
+
+  // Accessible dialog behavior: focus the first field on open, keep Tab focus
+  // inside the dialog, close on Escape, and restore focus to the opener on close.
   useEffect(() => {
-    const onKey = (ev: KeyboardEvent) => ev.key === 'Escape' && onClose()
+    const opener = document.activeElement as HTMLElement | null
+    titleInputRef.current?.focus()
+
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key === 'Escape') {
+        onClose()
+        return
+      }
+      if (ev.key !== 'Tab' || !dialogRef.current) return
+      const focusable = dialogRef.current.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      )
+      if (focusable.length === 0) return
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (ev.shiftKey && document.activeElement === first) {
+        ev.preventDefault()
+        last.focus()
+      } else if (!ev.shiftKey && document.activeElement === last) {
+        ev.preventDefault()
+        first.focus()
+      }
+    }
+
     document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      opener?.focus?.()
+    }
   }, [onClose])
 
   const toggleTag = (id: string) =>
@@ -67,11 +98,17 @@ export default function EditEventModal({ event, onClose }: { event: CampusEvent;
     <div className="fixed inset-0 z-50 flex flex-col sm:flex-row sm:items-center sm:justify-center">
       <button aria-label="Close" onClick={onClose} className="absolute inset-0 bg-black/30" />
       <form
+        ref={dialogRef}
         onSubmit={onSave}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="edit-event-title"
         className="hf-sheet-up relative z-10 mt-auto max-h-[88vh] w-full overflow-y-auto rounded-t-md bg-white p-4 shadow-hoagie sm:mt-0 sm:w-[480px] sm:max-w-[calc(100vw-2rem)] sm:rounded-md sm:p-5"
       >
         <div className="mb-3 flex items-center justify-between gap-3">
-          <h2 className="font-brand text-[18px] font-bold text-pink-900">Edit event</h2>
+          <h2 id="edit-event-title" className="font-brand text-[18px] font-bold text-pink-900">
+            Edit event
+          </h2>
           <button
             type="button"
             onClick={onClose}
@@ -82,8 +119,16 @@ export default function EditEventModal({ event, onClose }: { event: CampusEvent;
           </button>
         </div>
 
-        <label className={labelCls}>Title</label>
-        <input className={inputCls} value={title} onChange={(e) => setTitle(e.target.value)} />
+        <label className={labelCls} htmlFor="edit-event-title-input">
+          Title
+        </label>
+        <input
+          id="edit-event-title-input"
+          ref={titleInputRef}
+          className={inputCls}
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+        />
 
         <label className={`${labelCls} mt-4`}>Description</label>
         <textarea
