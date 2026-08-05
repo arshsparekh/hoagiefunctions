@@ -11,15 +11,21 @@ change must follow so the app stays consistent.
 - **Tailwind CSS v4** (CSS-first `@theme`, configured in `src/index.css` - there is
   no `tailwind.config.js`)
 - **React Router v7** (`react-router-dom`, `<BrowserRouter>` + `<Routes>`)
-- **Zustand** for global state (`src/store.ts`, built on `src/data/seed.ts`)
+- **Zustand** for global state (`src/store.ts`, built on `src/data/seed.ts`);
+  **persisted to localStorage** so state survives reloads
 - **vite-plugin-pwa** for the installable manifest + service worker
+- **Vitest** for the unit suite; **oxlint** for linting
 
 ```bash
 npm run dev       # http://localhost:5173
 npm run build     # tsc -b && vite build
 npm run preview   # serve the production build (needed to test the PWA/SW)
+npm run test      # vitest run (logic + store authorization suite)
 npm run lint      # oxlint
 ```
+
+Backend design (not yet wired to the app) lives in `supabase/` (Postgres schema +
+RLS policies) and is documented in `docs/ARCHITECTURE.md` + `docs/SECURITY.md`.
 
 ## Design system - match this exactly
 
@@ -97,8 +103,10 @@ the app.
   pattern for any Hoagie sub-brand.
 - **Navigation is responsive:** primary links (Home, Calendar, Map, Profile) render
   inline on `md+` in the top nav and collapse into the icon `BottomTabBar` on mobile.
-  Create lives in the top nav on `md+` and in the mobile-only `CreateFab` below it -
-  so exactly one "+" shows at any width. The app is **mobile-first**.
+  The top nav also holds a **search** icon (→ `/search`) and a **notification bell**
+  (→ `/notifications`) with an unread-count badge, plus the **Create** button
+  (icon-only on mobile, `+ Create` on `sm+`) - all visible at every width. There is
+  no `CreateFab` (removed); Create is always top-right. The app is **mobile-first**.
 - Content lives in a centered container (`mx-auto max-w-*` with horizontal padding)
   and must keep bottom padding on mobile so the fixed tab bar never overlaps content.
 
@@ -119,7 +127,9 @@ from these rather than re-styling pills/cards inline. They read static labels vi
 | `EventCard` | The workhorse feed card. Takes a `CampusEvent`, routes to `/event/:id`. Pass `compact` for the mini card used in calendar day panels and map popups. |
 | `Button` | `primary` (pink) / `secondary`, `sm`/`md`. |
 | `SectionHeader`, `EmptyState` | Section titles (Nunito) and empty placeholders. |
-| `CreateFab` | Floating `+` action to `/create`; circular by design (icon action). |
+| `SaveButton` | Bookmark toggle for an event (`icon` for cards, `labeled` for detail). Per-user, persisted. |
+| `FollowButton` | Circular pink follow toggle for a club or person (per-user). |
+| `EditEventModal` | Host/admin edit sheet → `updateEvent` (checks the returned `ActionResult`). |
 | `MiniMap` | Small Leaflet map centered on one building with a pink pin + name. |
 | `Toaster` | Renders the app-wide toast queue; mounted once in `AppShell`. |
 
@@ -160,7 +170,7 @@ Maps use **react-leaflet** with OpenStreetMap tiles. Two rules that keep it work
 
 - Always `import 'leaflet/dist/leaflet.css'` in any file that renders a map.
 - **Never use Leaflet's default PNG marker** (it breaks under the bundler). Build
-  pins with `buildPinIcon(reserved, count)` from `src/lib/mapIcons.ts` - a purple
+  pins with `buildPinIcon(reserved, count)` from `src/lib/mapIcons.ts` - a pink
   `L.divIcon` teardrop, orange ring when reserved, count badge when a pin covers
   several events. The `.hf-pin` CSS (in `index.css`) strips Leaflet's default box.
 - The full-bleed `/map` page fills `h-[calc(100dvh-3.5rem)]` and cancels the shell's
@@ -176,14 +186,17 @@ Maps use **react-leaflet** with OpenStreetMap tiles. Two rules that keep it work
 | `/event/:id` | Event detail: map, attendees, participation actions (rsvp / applyToEvent). The guestlist **auto-accept** success banner is the key demo beat - keep it prominent. Admins of the host club get a "Manage guestlist" section. |
 | `/club/:id` | Club header, membership button, admin roster + succession (`transferAdmin`), pending-request approvals (`approveMember`/`denyMember`), and the club's events. |
 | `/create` | Grouped event form → `createEvent`. "Post as" is limited to the user or clubs in `adminOf`; `?host=<clubId>` preselects. Building autocomplete (custom places call `addBuilding`). Reservation toggle runs the conflict check and shows an inline warning on clash. |
-| `/profile` | Effective current user: identity + club badges, then "Going" / "On the guestlist" / "Pending" sections built from `rsvps`, `applications`, and pending `clubMemberships`. |
+| `/profile` | Effective current user: identity + club badges, then "Events you manage" / "Going" / "Saved" / "Following" / "On the guestlist" / "Pending" sections built from the store. |
+| `/search` | Free-text search across `visibleEvents()`, clubs, and people, grouped. |
+| `/notifications` | Per-user activity feed (`myNotifications()`); marks unread as read on view. |
 
 ### Demo mode & polish
 
-- **`DemoControls`** (mounted in `AppShell`, bottom-left) is a dev-only floating
-  panel: a "View as" switch (`setViewAs`) and "Reset demo" (`resetDemo`). It
-  collapses to a small "Demo" pill so it stays out of frame. It's the one piece of
-  non-product UI - keep it clearly a dev tool.
+- **`DemoControls`** (mounted in `AppShell`, bottom-right) is a dev-only floating
+  panel: a "View as" switch (`setViewAs`), a repo link, and "Reset demo"
+  (`resetDemo`, which also clears the persisted localStorage state). It collapses to
+  a small "Demo" pill so it stays out of frame. It's the one piece of non-product UI
+  - keep it clearly a dev tool.
 - Routes fade in via `.hf-page` (opacity only - never transform, so Leaflet layout
   is undisturbed) and scroll to top on navigation, both handled in `AppShell`.
 - First app paint shows `SkeletonEventCard`s on Home (guarded by a module-level
@@ -207,6 +220,8 @@ Routes live in `src/App.tsx` under the `AppShell` layout route:
 | `/profile` | Profile |
 | `/club/:id` | ClubDetail |
 | `/create` | Create |
+| `/search` | Search |
+| `/notifications` | Notifications |
 
 Add new pages under `src/pages/` and register them in `App.tsx`. Use the shared
 `PageContainer`/`PageHeader` helpers so every page has consistent spacing and title
@@ -235,6 +250,28 @@ data in **`src/data/seed.ts`**. Rules:
   in `createEvent`; keep that guard when adding event-creation UI.
 - Prefer local `useState` for view-only UI; reach for the store only for data shared
   across routes. Actions are immutable-friendly (new arrays/objects via `set`).
+- **Persistence:** the store is wrapped in `persist` (localStorage, with an
+  in-memory fallback for tests). `partialize` stores only data; `onRehydrateStorage`
+  re-hydrates custom buildings into `buildingById`. `resetDemo()` re-seeds a clean
+  state (and thereby clears storage).
+- **Authorization is in the store, not just the UI.** Every privileged mutation
+  (`updateEvent`, `toggleCheckIn`, `approveApplicant`/`denyApplicant`,
+  `approveMember`/`denyMember`, `transferAdmin`, and club-posting in `createEvent`)
+  checks `canManageEvent` / admin-of-club and returns `ActionResult`
+  (`{ ok, reason }`). Callers surface the reason on failure. Keep new mutations
+  guarded the same way; `supabase/policies.sql` mirrors these as RLS.
+- **Per-user data** (`followingByUser`, `savedByUser`) is keyed by the effective
+  user id via `toggleFollow`/`toggleSave`; use the `isFollowing`/`isSaved`/
+  `myFollowing`/`savedEvents` selectors (they return primitives/whole-store views -
+  never subscribe to a new-array selector, it thrashes `useSyncExternalStore`).
+- **Notifications** are a flat, persisted list generated by actions (approvals,
+  waitlist promotion, new events from followed hosts, reschedules) plus a small
+  data-derived seed. Use `myNotifications()`/`unreadCount()`/`markAllNotificationsRead`.
+- **Waitlist:** `rsvp` on a full (capacity-bound) event adds to `waitlistIds` and
+  returns `{ ok:false, waitlisted:true }`; `cancelRsvp` promotes the first waitlister
+  and notifies them. Keep this in sync with capacity if you touch RSVP logic.
+- **Input** is sanitized + validated via `src/lib/validation.ts` on create/edit;
+  the same limits are `check` constraints in `supabase/schema.sql`.
 
 ## Conventions
 

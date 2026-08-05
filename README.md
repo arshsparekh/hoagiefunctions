@@ -1,32 +1,81 @@
-# React + TypeScript + Vite
+# hoagiefunctions
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Every function on campus, in one place. A mobile-first PWA for Princeton events -
+eating-club nights, dorm parties, club GBMs, listening parties - built in the
+Hoagie style. Browse a personalized feed, see what's happening on a live campus
+map, RSVP or request a guestlist spot, and - if you run a club - post events,
+approve members, and check people in at the door.
 
-Currently, two official plugins are available:
+> Demo identity is simulated with a "View as" switcher (Arsh '28 / a club admin /
+> a new student). Real deployment signs in with Princeton netID / Hoagie SSO -
+> see [`supabase/README.md`](supabase/README.md).
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## What it does
 
-## React Compiler
+- **For-You feed** - events ranked by the clubs and tags you actually engage with.
+- **Live map** - Leaflet + OpenStreetMap with custom pins, date/type filters, and
+  a "reserved spaces" overlay.
+- **RSVP, guestlist, and waitlist** - open events, RSVP events, and guestlist
+  events with badge-based auto-accept. Full events put you on a waitlist and
+  promote you (with a notification) when a seat frees.
+- **Clubs** - membership requests, admin approvals, and admin succession.
+- **Create + manage** - post as yourself or a club you run; edit details; run a
+  door check-in roster; approve the guestlist.
+- **Notifications** - a per-user feed: approvals, waitlist promotions, and new
+  events from clubs/people you follow. Unread count in the nav.
+- **Search** across events (visibility-aware), clubs, and people.
+- **Saved events**, **follow** clubs/people, **share** links, and **add to
+  calendar** (`.ics`).
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Everything persists across reloads (localStorage), so it feels like a real app,
+not a reset-on-refresh demo.
 
-## Expanding the Oxlint configuration
+## Why it's more than a prototype
 
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
+- **Authorization is real and layered.** `src/lib/visibility.ts` is the single
+  spec for "who can see / manage what." The store enforces it before every
+  mutation (defense in depth, tested), and `supabase/policies.sql` re-implements
+  the exact same predicates as Postgres row-level security - the real boundary.
+- **Input is validated + sanitized** in one place (`src/lib/validation.ts`),
+  mirrored by `check` constraints in the schema.
+- **It's tested.** `npm test` runs a Vitest suite over validation, datetime,
+  visibility, notifications, `.ics`, and the store's authorization / waitlist /
+  notification logic.
+- **It's built to graduate to a backend.** `supabase/` holds the full Postgres
+  schema, RLS policies, and atomic RPCs (capacity/waitlist, notification
+  fan-out). The store is the single seam to swap `localStorage` for Supabase.
 
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and
+[`docs/SECURITY.md`](docs/SECURITY.md).
+
+## Run it
+
+```bash
+npm install
+npm run dev      # http://localhost:5173
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+```bash
+npm run build    # type-check + production build
+npm run test     # Vitest unit suite
+npm run lint     # oxlint
+```
+
+## Stack
+
+Vite 8 · React 19 · TypeScript · Tailwind CSS v4 (CSS-first `@theme`) ·
+React Router 7 · Zustand 5 · react-leaflet · vite-plugin-pwa · Vitest · oxlint.
+
+## Project layout
+
+```
+src/
+  data/seed.ts     Types + demo data (single source of domain shapes)
+  store.ts         Zustand: persistence, selectors, authorized actions
+  lib/             visibility · validation · notifications · ics · datetime
+  components/       AppShell, TopNav, ErrorBoundary, ui/ kit
+  pages/            Home · Calendar · Map · Event · Club · Create · Profile
+                    · Search · Notifications
+supabase/          schema.sql · policies.sql · README (the production data layer)
+docs/              ARCHITECTURE.md · SECURITY.md
+```
