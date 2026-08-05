@@ -187,7 +187,9 @@ export default function Create() {
 
     if (!result.ok) {
       setConflictError(
-        `This space is already reserved for ${result.conflict.title} at that time.`,
+        'conflict' in result
+          ? `This space is already reserved for ${result.conflict.title} at that time.`
+          : result.error,
       )
       return
     }

@@ -3,8 +3,19 @@
 // The app's state layer. All demo data comes from src/data/seed.ts - this file
 // never redefines a type or re-creates seed data; it clones the seed on init and
 // mutates copies through immutable-friendly Zustand updates.
+//
+// State is PERSISTED to localStorage (zustand `persist`), so created events,
+// RSVPs, follows, saves, check-ins and notifications survive a reload - the app
+// behaves like a real product rather than resetting on refresh. `resetDemo()`
+// wipes back to a clean seed.
+//
+// Every mutating action is AUTHORIZED here (defense in depth): the store refuses
+// to edit an event, run a door, or approve into a club unless the effective user
+// is actually a host/admin - even if a buggy or tampered UI tried to. This mirrors
+// the row-level-security rules a real backend would enforce (see supabase/).
 
 import { create } from 'zustand'
+import { persist, createJSONStorage } from 'zustand/middleware'
 import {
   users as seedUsers,
   clubs as seedClubs,
@@ -23,7 +34,16 @@ import type {
   EventApplicant,
   ApplicantStatus,
 } from './data/seed'
-import { canSeeEvent } from './lib/visibility'
+import { canSeeEvent, canManageEvent } from './lib/visibility'
+import {
+  sanitizeText,
+  sanitizeSingleLine,
+  clampInt,
+  validateEventDraft,
+  hasErrors,
+  LIMITS,
+} from './lib/validation'
+import type { AppNotification, NotificationKind } from './lib/notifications'
 
 // Re-export the static lookups so UI can pull everything from the store module.
 export { buildings, tags, buildingById, tagById }
@@ -67,15 +87,71 @@ const freshUsers = (): User[] => [...structuredClone(seedUsers), makeGuest()]
 const freshClubs = (): Club[] => structuredClone(seedClubs)
 const freshEvents = (): CampusEvent[] => structuredClone(seedEvents)
 
-// Monotonic id source for events created during the session.
+// Monotonic id sources for things created during the session.
 let createdCount = 0
 const nextEventId = () => `ev-new-${(++createdCount).toString(36)}`
+let notifSeq = 0
+const nextNotifId = () => `n-${Date.now().toString(36)}-${(++notifSeq).toString(36)}`
+
+function makeNotif(
+  userId: string,
+  kind: NotificationKind,
+  fields: Partial<Pick<AppNotification, 'title' | 'body' | 'eventId' | 'clubId'>>,
+): AppNotification {
+  return {
+    id: nextNotifId(),
+    userId,
+    kind,
+    title: fields.title ?? '',
+    body: fields.body ?? '',
+    eventId: fields.eventId,
+    clubId: fields.clubId,
+    ts: Date.now(),
+    read: false,
+  }
+}
+
+/**
+ * A small, data-derived set of starter notifications so the bell is alive on
+ * first open: "new from a club you're in". Derived entirely from real seed ids,
+ * so it never dangles.
+ */
+function seedNotifications(usersArr: User[], eventsArr: CampusEvent[]): AppNotification[] {
+  const me = usersArr.find((u) => u.id === CURRENT_USER_ID)
+  if (!me) return []
+  const myClubIds = new Set<string>([
+    ...me.clubMemberships.filter((m) => m.status === 'member').map((m) => m.clubId),
+    ...me.adminOf,
+    ...(me.eatingClubId ? [me.eatingClubId] : []),
+  ])
+  const soon = eventsArr
+    .filter(
+      (e) =>
+        (e.hostType === 'club' || e.hostType === 'eatingClub') &&
+        myClubIds.has(e.hostId) &&
+        !e.attendeeIds.includes(me.id) &&
+        new Date(e.start).getTime() >= Date.now(),
+    )
+    .sort((a, b) => (a.start < b.start ? -1 : 1))
+    .slice(0, 2)
+
+  return soon.map((e, i) => ({
+    ...makeNotif(me.id, 'newEventFromFollowed', {
+      title: `New from ${e.hostName}`,
+      body: e.title,
+      eventId: e.id,
+      clubId: e.hostId,
+    }),
+    // stagger into the recent past so the timestamps read naturally
+    ts: Date.now() - (i + 1) * 3_600_000,
+  }))
+}
 
 // ---------------------------------------------------------------------------
 // Action result shapes
 // ---------------------------------------------------------------------------
 
-export type ActionResult = { ok: boolean; reason?: string }
+export type ActionResult = { ok: boolean; reason?: string; waitlisted?: boolean }
 
 export type ApplyResult =
   | { ok: true; status: Extract<ApplicantStatus, 'auto' | 'pending'> }
@@ -89,6 +165,7 @@ export type CreateEventInput = Omit<CampusEvent, 'id' | 'attendeeIds' | 'applica
 export type CreateResult =
   | { ok: true; event: CampusEvent }
   | { ok: false; conflict: CampusEvent }
+  | { ok: false; error: string }
 
 /** Fields a host/admin can edit after posting. */
 export type EventEdit = Partial<
@@ -114,13 +191,17 @@ export interface AppState {
   users: User[]
   clubs: Club[]
   events: CampusEvent[]
+  /** Ad-hoc locations created during the session (persisted; merged into buildingById). */
+  customBuildings: Building[]
 
   // Identity / perspective
   currentUserId: string
   viewAs: ViewAs
 
-  // Clubs + people the viewer follows (ids; demo-only, powers a notifications story)
-  following: string[]
+  // Per-user social graph + activity (keyed by user id so each viewAs is coherent)
+  followingByUser: Record<string, string[]>
+  savedByUser: Record<string, string[]>
+  notifications: AppNotification[]
 
   // Selectors
   currentUser: () => User
@@ -129,21 +210,30 @@ export interface AppState {
   recommendedEvents: () => CampusEvent[]
   eventsForUser: () => CampusEvent[]
   myClubs: () => Club[]
+  myFollowing: () => string[]
+  isFollowing: (id: string) => boolean
+  mySaved: () => string[]
+  isSaved: (eventId: string) => boolean
+  savedEvents: () => CampusEvent[]
+  myNotifications: () => AppNotification[]
+  unreadCount: () => number
 
   // Actions
   setViewAs: (v: ViewAs) => void
   rsvp: (eventId: string) => ActionResult
   cancelRsvp: (eventId: string) => ActionResult
   applyToEvent: (eventId: string) => ApplyResult
-  approveApplicant: (eventId: string, userId: string) => void
-  denyApplicant: (eventId: string, userId: string) => void
+  approveApplicant: (eventId: string, userId: string) => ActionResult
+  denyApplicant: (eventId: string, userId: string) => ActionResult
   joinClub: (clubId: string) => void
-  approveMember: (clubId: string, userId: string) => void
-  denyMember: (clubId: string, userId: string) => void
+  approveMember: (clubId: string, userId: string) => ActionResult
+  denyMember: (clubId: string, userId: string) => ActionResult
   createEvent: (payload: CreateEventInput) => CreateResult
-  updateEvent: (eventId: string, patch: EventEdit) => void
-  toggleCheckIn: (eventId: string, userId: string) => void
+  updateEvent: (eventId: string, patch: EventEdit) => ActionResult
+  toggleCheckIn: (eventId: string, userId: string) => ActionResult
   toggleFollow: (id: string) => void
+  toggleSave: (eventId: string) => void
+  markAllNotificationsRead: () => void
   transferAdmin: (clubId: string, toUserId: string) => ActionResult
   addBuilding: (b: Building) => void
   resetDemo: () => void
@@ -187,297 +277,596 @@ function affinityTags(me: User, events: CampusEvent[]): Set<string> {
 const matchesAffinity = (ev: CampusEvent, affinity: Set<string>): boolean =>
   ev.tags.some((t) => affinity.has(t))
 
+/** Everyone who follows `targetId` (a club or user), for fan-out notifications. */
+function followersOf(followingByUser: Record<string, string[]>, targetId: string): string[] {
+  const out: string[] = []
+  for (const [uid, list] of Object.entries(followingByUser)) {
+    if (list.includes(targetId)) out.push(uid)
+  }
+  return out
+}
+
+// ---------------------------------------------------------------------------
+// Storage: localStorage in the browser, an in-memory shim elsewhere (tests/SSR)
+// so store creation never throws when `localStorage` is absent.
+// ---------------------------------------------------------------------------
+
+function makeStorage() {
+  if (typeof localStorage !== 'undefined') return localStorage
+  const mem = new Map<string, string>()
+  return {
+    getItem: (k: string) => mem.get(k) ?? null,
+    setItem: (k: string, v: string) => void mem.set(k, v),
+    removeItem: (k: string) => void mem.delete(k),
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Store
 // ---------------------------------------------------------------------------
 
-export const useStore = create<AppState>((set, get) => ({
-  users: freshUsers(),
-  clubs: freshClubs(),
-  events: freshEvents(),
-  currentUserId: CURRENT_USER_ID,
-  viewAs: 'me',
-  following: [],
+function initialState() {
+  const users = freshUsers()
+  const events = freshEvents()
+  return {
+    users,
+    clubs: freshClubs(),
+    events,
+    customBuildings: [] as Building[],
+    currentUserId: CURRENT_USER_ID,
+    viewAs: 'me' as ViewAs,
+    followingByUser: {} as Record<string, string[]>,
+    savedByUser: {} as Record<string, string[]>,
+    notifications: seedNotifications(users, events),
+  }
+}
 
-  // --- Selectors -----------------------------------------------------------
+export const useStore = create<AppState>()(
+  persist(
+    (set, get) => ({
+      ...initialState(),
 
-  currentUser: () => {
-    const { viewAs, users } = get()
-    const id = VIEW_AS_TO_USER[viewAs]
-    return users.find((u) => u.id === id) ?? users[0]
-  },
+      // --- Selectors ---------------------------------------------------------
 
-  eventsSorted: () =>
-    [...get().events].sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : 0)),
+      currentUser: () => {
+        const { viewAs, users } = get()
+        const id = VIEW_AS_TO_USER[viewAs]
+        return users.find((u) => u.id === id) ?? users[0]
+      },
 
-  /** Events the effective current user is allowed to discover, chronological. */
-  visibleEvents: () => {
-    const me = get().currentUser()
-    return get().eventsSorted().filter((e) => canSeeEvent(e, me))
-  },
+      eventsSorted: () =>
+        [...get().events].sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : 0)),
 
-  /**
-   * The affinity-matching events only, chronological. These are the
-   * "Recommended for you" rows on the feed. Only ever visible events.
-   */
-  recommendedEvents: () => {
-    const byStart = get().visibleEvents()
-    const affinity = affinityTags(get().currentUser(), byStart)
-    return byStart.filter((ev) => matchesAffinity(ev, affinity))
-  },
+      visibleEvents: () => {
+        const me = get().currentUser()
+        return get().eventsSorted().filter((e) => canSeeEvent(e, me))
+      },
 
-  /**
-   * "For You" ordering: affinity-matching events first (chronological within the
-   * group), then everything else chronological. Only ever visible events.
-   */
-  eventsForUser: () => {
-    const byStart = get().visibleEvents()
-    const affinity = affinityTags(get().currentUser(), byStart)
-    return [
-      ...byStart.filter((ev) => matchesAffinity(ev, affinity)),
-      ...byStart.filter((ev) => !matchesAffinity(ev, affinity)),
-    ]
-  },
+      recommendedEvents: () => {
+        const byStart = get().visibleEvents()
+        const affinity = affinityTags(get().currentUser(), byStart)
+        return byStart.filter((ev) => matchesAffinity(ev, affinity))
+      },
 
-  myClubs: () => {
-    const me = get().currentUser()
-    return get().clubs.filter((c) => c.memberIds.includes(me.id) || c.adminIds.includes(me.id))
-  },
+      eventsForUser: () => {
+        const byStart = get().visibleEvents()
+        const affinity = affinityTags(get().currentUser(), byStart)
+        return [
+          ...byStart.filter((ev) => matchesAffinity(ev, affinity)),
+          ...byStart.filter((ev) => !matchesAffinity(ev, affinity)),
+        ]
+      },
 
-  // --- Actions -------------------------------------------------------------
+      myClubs: () => {
+        const me = get().currentUser()
+        return get().clubs.filter((c) => c.memberIds.includes(me.id) || c.adminIds.includes(me.id))
+      },
 
-  setViewAs: (v) => set({ viewAs: v, currentUserId: VIEW_AS_TO_USER[v] }),
+      myFollowing: () => get().followingByUser[get().currentUser().id] ?? [],
+      isFollowing: (id) => (get().followingByUser[get().currentUser().id] ?? []).includes(id),
 
-  rsvp: (eventId) => {
-    const me = get().currentUser()
-    const ev = get().events.find((e) => e.id === eventId)
-    if (!ev) return { ok: false, reason: 'Event not found.' }
-    if (ev.attendeeIds.includes(me.id)) return { ok: true }
-    if (ev.capacity !== undefined && ev.attendeeIds.length >= ev.capacity) {
-      return { ok: false, reason: 'This event is at capacity.' }
-    }
-    set((state) => ({
-      events: replaceById(state.events, eventId, (e) => ({
-        ...e,
-        attendeeIds: [...e.attendeeIds, me.id],
-      })),
-      users: replaceById(state.users, me.id, (u) => ({ ...u, rsvps: [...u.rsvps, eventId] })),
-    }))
-    return { ok: true }
-  },
+      mySaved: () => get().savedByUser[get().currentUser().id] ?? [],
+      isSaved: (eventId) => (get().savedByUser[get().currentUser().id] ?? []).includes(eventId),
+      savedEvents: () => {
+        const saved = new Set(get().mySaved())
+        return get().visibleEvents().filter((e) => saved.has(e.id))
+      },
 
-  cancelRsvp: (eventId) => {
-    const me = get().currentUser()
-    set((state) => ({
-      events: replaceById(state.events, eventId, (e) => ({
-        ...e,
-        attendeeIds: e.attendeeIds.filter((id) => id !== me.id),
-      })),
-      users: replaceById(state.users, me.id, (u) => ({
-        ...u,
-        rsvps: u.rsvps.filter((id) => id !== eventId),
-      })),
-    }))
-    return { ok: true }
-  },
+      myNotifications: () => {
+        const meId = get().currentUser().id
+        return get()
+          .notifications.filter((n) => n.userId === meId)
+          .sort((a, b) => b.ts - a.ts)
+      },
+      unreadCount: () => {
+        const meId = get().currentUser().id
+        return get().notifications.filter((n) => n.userId === meId && !n.read).length
+      },
 
-  applyToEvent: (eventId) => {
-    const me = get().currentUser()
-    const ev = get().events.find((e) => e.id === eventId)
-    if (!ev) return { ok: false, reason: 'Event not found.' }
-    if (ev.accessType !== 'guestlist') {
-      return { ok: false, reason: 'This event does not use a guestlist.' }
-    }
-    if (ev.applicants.some((a) => a.userId === me.id)) {
-      return { ok: false, reason: 'You already applied to this event.' }
-    }
+      // --- Actions -----------------------------------------------------------
 
-    // The user "holds the host club's badge" when the host is a club/eatingClub
-    // AND they are a confirmed member of it (eating-club badge or member status).
-    const holdsBadge =
-      (ev.hostType === 'club' || ev.hostType === 'eatingClub') &&
-      (me.eatingClubId === ev.hostId ||
-        me.clubMemberships.some((m) => m.clubId === ev.hostId && m.status === 'member'))
+      setViewAs: (v) => set({ viewAs: v, currentUserId: VIEW_AS_TO_USER[v] }),
 
-    const status: Extract<ApplicantStatus, 'auto' | 'pending'> = holdsBadge ? 'auto' : 'pending'
+      rsvp: (eventId) => {
+        const me = get().currentUser()
+        const ev = get().events.find((e) => e.id === eventId)
+        if (!ev) return { ok: false, reason: 'Event not found.' }
+        if (!canSeeEvent(ev, me)) return { ok: false, reason: 'This event is private.' }
+        if (ev.attendeeIds.includes(me.id)) return { ok: true }
 
-    set((state) => ({
-      events: replaceById(state.events, eventId, (e) => ({
-        ...e,
-        applicants: [...e.applicants, { userId: me.id, status }],
-        attendeeIds:
-          holdsBadge && !e.attendeeIds.includes(me.id)
-            ? [...e.attendeeIds, me.id]
-            : e.attendeeIds,
-      })),
-      users: replaceById(state.users, me.id, (u) => ({
-        ...u,
-        applications: [...u.applications, { eventId, status }],
-      })),
-    }))
-    return { ok: true, status }
-  },
-
-  approveApplicant: (eventId, userId) =>
-    set((state) => ({
-      events: replaceById(state.events, eventId, (e) => ({
-        ...e,
-        applicants: e.applicants.map((a) =>
-          a.userId === userId ? { ...a, status: 'approved' } : a,
-        ),
-        attendeeIds: e.attendeeIds.includes(userId)
-          ? e.attendeeIds
-          : [...e.attendeeIds, userId],
-      })),
-      users: replaceById(state.users, userId, (u) => ({
-        ...u,
-        applications: u.applications.map((ap) =>
-          ap.eventId === eventId ? { ...ap, status: 'approved' } : ap,
-        ),
-      })),
-    })),
-
-  denyApplicant: (eventId, userId) =>
-    set((state) => ({
-      events: replaceById(state.events, eventId, (e) => ({
-        ...e,
-        applicants: e.applicants.filter((a) => a.userId !== userId),
-        attendeeIds: e.attendeeIds.filter((id) => id !== userId),
-      })),
-      users: replaceById(state.users, userId, (u) => ({
-        ...u,
-        applications: u.applications.filter((ap) => ap.eventId !== eventId),
-      })),
-    })),
-
-  joinClub: (clubId) => {
-    const me = get().currentUser()
-    set((state) => ({
-      clubs: replaceById(state.clubs, clubId, (c) => ({
-        ...c,
-        pendingIds: c.pendingIds.includes(me.id) ? c.pendingIds : [...c.pendingIds, me.id],
-      })),
-      users: replaceById(state.users, me.id, (u) => ({
-        ...u,
-        clubMemberships: u.clubMemberships.some((m) => m.clubId === clubId)
-          ? u.clubMemberships
-          : [...u.clubMemberships, { clubId, status: 'pending' }],
-      })),
-    }))
-  },
-
-  approveMember: (clubId, userId) =>
-    // Granting the badge: this user becomes a confirmed member, so future
-    // guestlist events hosted by this club auto-accept them (see applyToEvent).
-    set((state) => ({
-      clubs: replaceById(state.clubs, clubId, (c) => ({
-        ...c,
-        pendingIds: c.pendingIds.filter((id) => id !== userId),
-        memberIds: c.memberIds.includes(userId) ? c.memberIds : [...c.memberIds, userId],
-      })),
-      users: replaceById(state.users, userId, (u) => ({
-        ...u,
-        clubMemberships: u.clubMemberships.some((m) => m.clubId === clubId)
-          ? u.clubMemberships.map((m) => (m.clubId === clubId ? { ...m, status: 'member' } : m))
-          : [...u.clubMemberships, { clubId, status: 'member' }],
-      })),
-    })),
-
-  denyMember: (clubId, userId) =>
-    set((state) => ({
-      clubs: replaceById(state.clubs, clubId, (c) => ({
-        ...c,
-        pendingIds: c.pendingIds.filter((id) => id !== userId),
-      })),
-      users: replaceById(state.users, userId, (u) => ({
-        ...u,
-        clubMemberships: u.clubMemberships.filter(
-          (m) => !(m.clubId === clubId && m.status === 'pending'),
-        ),
-      })),
-    })),
-
-  createEvent: (payload) => {
-    if (payload.reservationConfirmed) {
-      const conflict = get().events.find(
-        (e) =>
-          e.buildingId === payload.buildingId &&
-          e.reservationConfirmed &&
-          overlaps(payload.start, payload.end, e.start, e.end),
-      )
-      if (conflict) return { ok: false, conflict }
-    }
-    const event: CampusEvent = {
-      ...payload,
-      id: nextEventId(),
-      attendeeIds: payload.attendeeIds ?? [],
-      applicants: payload.applicants ?? [],
-    }
-    set((state) => ({ events: [...state.events, event] }))
-    return { ok: true, event }
-  },
-
-  updateEvent: (eventId, patch) =>
-    set((state) => ({
-      events: replaceById(state.events, eventId, (e) => ({ ...e, ...patch })),
-    })),
-
-  // Door check-in: flip whether an attendee has been checked in at the event.
-  toggleCheckIn: (eventId, userId) =>
-    set((state) => ({
-      events: replaceById(state.events, eventId, (e) => {
-        const set = e.checkedInIds ?? []
-        return {
-          ...e,
-          checkedInIds: set.includes(userId)
-            ? set.filter((id) => id !== userId)
-            : [...set, userId],
-        }
-      }),
-    })),
-
-  toggleFollow: (id) =>
-    set((state) => ({
-      following: state.following.includes(id)
-        ? state.following.filter((x) => x !== id)
-        : [...state.following, id],
-    })),
-
-  transferAdmin: (clubId, toUserId) => {
-    const me = get().currentUser()
-    set((state) => ({
-      clubs: replaceById(state.clubs, clubId, (c) => ({
-        ...c,
-        adminIds: [...c.adminIds.filter((id) => id !== me.id && id !== toUserId), toUserId],
-        memberIds: c.memberIds.includes(toUserId) ? c.memberIds : [...c.memberIds, toUserId],
-      })),
-      users: state.users.map((u) => {
-        if (u.id === me.id) return { ...u, adminOf: u.adminOf.filter((id) => id !== clubId) }
-        if (u.id === toUserId)
+        const full = ev.capacity !== undefined && ev.attendeeIds.length >= ev.capacity
+        if (full) {
+          if ((ev.waitlistIds ?? []).includes(me.id)) return { ok: true, waitlisted: true }
+          set((state) => ({
+            events: replaceById(state.events, eventId, (e) => ({
+              ...e,
+              waitlistIds: [...(e.waitlistIds ?? []), me.id],
+            })),
+          }))
           return {
-            ...u,
-            adminOf: u.adminOf.includes(clubId) ? u.adminOf : [...u.adminOf, clubId],
+            ok: false,
+            waitlisted: true,
+            reason: "This event is full - you're on the waitlist.",
           }
-        return u
-      }),
-    }))
-    return { ok: true }
-  },
+        }
 
-  // Register an ad-hoc location (from "Create event" → custom place). We write it
-  // into the shared buildingById lookup so every consumer (cards, detail, map)
-  // resolves it; the next store update re-renders them with the name in place.
-  addBuilding: (b) => {
-    buildingById[b.id] = b
-  },
+        set((state) => ({
+          events: replaceById(state.events, eventId, (e) => ({
+            ...e,
+            attendeeIds: [...e.attendeeIds, me.id],
+          })),
+          users: replaceById(state.users, me.id, (u) => ({ ...u, rsvps: [...u.rsvps, eventId] })),
+        }))
+        return { ok: true }
+      },
 
-  resetDemo: () =>
-    set({
-      users: freshUsers(),
-      clubs: freshClubs(),
-      events: freshEvents(),
-      viewAs: 'me',
-      currentUserId: CURRENT_USER_ID,
-      following: [],
+      cancelRsvp: (eventId) => {
+        const me = get().currentUser()
+        const ev = get().events.find((e) => e.id === eventId)
+        if (!ev) return { ok: false, reason: 'Event not found.' }
+        const wasAttending = ev.attendeeIds.includes(me.id)
+
+        set((state) => {
+          const newNotifs: AppNotification[] = []
+          const events = replaceById(state.events, eventId, (e) => {
+            let attendeeIds = e.attendeeIds.filter((id) => id !== me.id)
+            let waitlistIds = (e.waitlistIds ?? []).filter((id) => id !== me.id)
+            const checkedInIds = (e.checkedInIds ?? []).filter((id) => id !== me.id)
+
+            // A seat opened: promote the first person waiting, if any.
+            const hasRoom = e.capacity === undefined || attendeeIds.length < e.capacity
+            let promoted: string | undefined
+            if (wasAttending && hasRoom && waitlistIds.length > 0) {
+              promoted = waitlistIds[0]
+              waitlistIds = waitlistIds.slice(1)
+              attendeeIds = [...attendeeIds, promoted]
+              newNotifs.push(
+                makeNotif(promoted, 'promotedFromWaitlist', {
+                  title: 'A spot opened up',
+                  body: `You're off the waitlist for ${e.title}.`,
+                  eventId: e.id,
+                }),
+              )
+            }
+            return { ...e, attendeeIds, waitlistIds, checkedInIds }
+          })
+
+          // Keep the promoted user's own rsvps list in sync.
+          const promotedId = newNotifs[0]?.userId
+          const users = promotedId
+            ? replaceById(state.users, promotedId, (u) => ({
+                ...u,
+                rsvps: u.rsvps.includes(eventId) ? u.rsvps : [...u.rsvps, eventId],
+              }))
+            : state.users
+
+          return {
+            events,
+            users: replaceById(users, me.id, (u) => ({
+              ...u,
+              rsvps: u.rsvps.filter((id) => id !== eventId),
+            })),
+            notifications: [...state.notifications, ...newNotifs],
+          }
+        })
+        return { ok: true }
+      },
+
+      applyToEvent: (eventId) => {
+        const me = get().currentUser()
+        const ev = get().events.find((e) => e.id === eventId)
+        if (!ev) return { ok: false, reason: 'Event not found.' }
+        if (!canSeeEvent(ev, me)) return { ok: false, reason: 'This event is private.' }
+        if (ev.accessType !== 'guestlist') {
+          return { ok: false, reason: 'This event does not use a guestlist.' }
+        }
+        if (ev.applicants.some((a) => a.userId === me.id)) {
+          return { ok: false, reason: 'You already applied to this event.' }
+        }
+
+        const holdsBadge =
+          (ev.hostType === 'club' || ev.hostType === 'eatingClub') &&
+          (me.eatingClubId === ev.hostId ||
+            me.clubMemberships.some((m) => m.clubId === ev.hostId && m.status === 'member'))
+
+        const status: Extract<ApplicantStatus, 'auto' | 'pending'> = holdsBadge ? 'auto' : 'pending'
+
+        set((state) => ({
+          events: replaceById(state.events, eventId, (e) => ({
+            ...e,
+            applicants: [...e.applicants, { userId: me.id, status }],
+            attendeeIds:
+              holdsBadge && !e.attendeeIds.includes(me.id)
+                ? [...e.attendeeIds, me.id]
+                : e.attendeeIds,
+          })),
+          users: replaceById(state.users, me.id, (u) => ({
+            ...u,
+            applications: [...u.applications, { eventId, status }],
+          })),
+        }))
+        return { ok: true, status }
+      },
+
+      approveApplicant: (eventId, userId) => {
+        const me = get().currentUser()
+        const ev = get().events.find((e) => e.id === eventId)
+        if (!ev) return { ok: false, reason: 'Event not found.' }
+        if (!canManageEvent(ev, me)) return { ok: false, reason: 'Only the host can do that.' }
+        set((state) => ({
+          events: replaceById(state.events, eventId, (e) => ({
+            ...e,
+            applicants: e.applicants.map((a) =>
+              a.userId === userId ? { ...a, status: 'approved' } : a,
+            ),
+            attendeeIds: e.attendeeIds.includes(userId)
+              ? e.attendeeIds
+              : [...e.attendeeIds, userId],
+          })),
+          users: replaceById(state.users, userId, (u) => ({
+            ...u,
+            applications: u.applications.map((ap) =>
+              ap.eventId === eventId ? { ...ap, status: 'approved' } : ap,
+            ),
+          })),
+          notifications: [
+            ...state.notifications,
+            makeNotif(userId, 'applicationApproved', {
+              title: "You're on the list",
+              body: `Approved for ${ev.title}.`,
+              eventId,
+            }),
+          ],
+        }))
+        return { ok: true }
+      },
+
+      denyApplicant: (eventId, userId) => {
+        const me = get().currentUser()
+        const ev = get().events.find((e) => e.id === eventId)
+        if (!ev) return { ok: false, reason: 'Event not found.' }
+        if (!canManageEvent(ev, me)) return { ok: false, reason: 'Only the host can do that.' }
+        set((state) => ({
+          events: replaceById(state.events, eventId, (e) => ({
+            ...e,
+            applicants: e.applicants.filter((a) => a.userId !== userId),
+            attendeeIds: e.attendeeIds.filter((id) => id !== userId),
+          })),
+          users: replaceById(state.users, userId, (u) => ({
+            ...u,
+            applications: u.applications.filter((ap) => ap.eventId !== eventId),
+          })),
+        }))
+        return { ok: true }
+      },
+
+      joinClub: (clubId) => {
+        const me = get().currentUser()
+        set((state) => ({
+          clubs: replaceById(state.clubs, clubId, (c) => ({
+            ...c,
+            pendingIds: c.pendingIds.includes(me.id) ? c.pendingIds : [...c.pendingIds, me.id],
+          })),
+          users: replaceById(state.users, me.id, (u) => ({
+            ...u,
+            clubMemberships: u.clubMemberships.some((m) => m.clubId === clubId)
+              ? u.clubMemberships
+              : [...u.clubMemberships, { clubId, status: 'pending' }],
+          })),
+        }))
+      },
+
+      approveMember: (clubId, userId) => {
+        const me = get().currentUser()
+        const club = get().clubs.find((c) => c.id === clubId)
+        if (!club) return { ok: false, reason: 'Club not found.' }
+        if (!me.adminOf.includes(clubId)) return { ok: false, reason: 'Only an admin can do that.' }
+        set((state) => ({
+          clubs: replaceById(state.clubs, clubId, (c) => ({
+            ...c,
+            pendingIds: c.pendingIds.filter((id) => id !== userId),
+            memberIds: c.memberIds.includes(userId) ? c.memberIds : [...c.memberIds, userId],
+          })),
+          users: replaceById(state.users, userId, (u) => ({
+            ...u,
+            clubMemberships: u.clubMemberships.some((m) => m.clubId === clubId)
+              ? u.clubMemberships.map((m) =>
+                  m.clubId === clubId ? { ...m, status: 'member' } : m,
+                )
+              : [...u.clubMemberships, { clubId, status: 'member' }],
+          })),
+          notifications: [
+            ...state.notifications,
+            makeNotif(userId, 'membershipApproved', {
+              title: `Welcome to ${club.name}`,
+              body: "You're now a member.",
+              clubId,
+            }),
+          ],
+        }))
+        return { ok: true }
+      },
+
+      denyMember: (clubId, userId) => {
+        const me = get().currentUser()
+        if (!me.adminOf.includes(clubId)) return { ok: false, reason: 'Only an admin can do that.' }
+        set((state) => ({
+          clubs: replaceById(state.clubs, clubId, (c) => ({
+            ...c,
+            pendingIds: c.pendingIds.filter((id) => id !== userId),
+          })),
+          users: replaceById(state.users, userId, (u) => ({
+            ...u,
+            clubMemberships: u.clubMemberships.filter(
+              (m) => !(m.clubId === clubId && m.status === 'pending'),
+            ),
+          })),
+        }))
+        return { ok: true }
+      },
+
+      createEvent: (payload) => {
+        const me = get().currentUser()
+
+        // Authorization: club posts require admin of that club; individual posts
+        // must be as yourself. (The form already enforces this; this is the backstop.)
+        if (
+          (payload.hostType === 'club' || payload.hostType === 'eatingClub') &&
+          !me.adminOf.includes(payload.hostId)
+        ) {
+          return { ok: false, error: 'Only an admin of this club can post as it.' }
+        }
+        if (payload.hostType === 'individual' && payload.hostId !== me.id) {
+          return { ok: false, error: 'You can only post your own events.' }
+        }
+
+        // Sanitize + validate.
+        const title = sanitizeSingleLine(payload.title)
+        const description = sanitizeText(payload.description)
+        const capacity =
+          payload.capacity !== undefined
+            ? clampInt(payload.capacity, LIMITS.capacityMin, LIMITS.capacityMax)
+            : undefined
+        const errs = validateEventDraft({
+          title,
+          description,
+          location: buildingById[payload.buildingId]?.name ?? payload.buildingId,
+          start: payload.start,
+          end: payload.end,
+          capacity,
+        })
+        if (hasErrors(errs)) return { ok: false, error: Object.values(errs)[0] as string }
+
+        // Reservation conflict check (a confirmed reservation locks the room+time).
+        if (payload.reservationConfirmed) {
+          const conflict = get().events.find(
+            (e) =>
+              e.buildingId === payload.buildingId &&
+              e.reservationConfirmed &&
+              overlaps(payload.start, payload.end, e.start, e.end),
+          )
+          if (conflict) return { ok: false, conflict }
+        }
+
+        const event: CampusEvent = {
+          ...payload,
+          title,
+          description,
+          capacity,
+          id: nextEventId(),
+          attendeeIds: payload.attendeeIds ?? [],
+          applicants: payload.applicants ?? [],
+          waitlistIds: [],
+        }
+
+        set((state) => {
+          // Fan out "new event" to followers of the host who can actually see it.
+          const followers = followersOf(state.followingByUser, event.hostId).filter(
+            (uid) => uid !== me.id,
+          )
+          const recipients = state.users.filter(
+            (u) => followers.includes(u.id) && canSeeEvent(event, u),
+          )
+          const notifs = recipients.map((u) =>
+            makeNotif(u.id, 'newEventFromFollowed', {
+              title: `New from ${event.hostName}`,
+              body: event.title,
+              eventId: event.id,
+              clubId: event.hostType !== 'individual' ? event.hostId : undefined,
+            }),
+          )
+          return { events: [...state.events, event], notifications: [...state.notifications, ...notifs] }
+        })
+        return { ok: true, event }
+      },
+
+      updateEvent: (eventId, patch) => {
+        const me = get().currentUser()
+        const ev = get().events.find((e) => e.id === eventId)
+        if (!ev) return { ok: false, reason: 'Event not found.' }
+        if (!canManageEvent(ev, me)) return { ok: false, reason: 'Only the host can edit this.' }
+
+        // Sanitize any text/number fields being changed.
+        const clean: EventEdit = { ...patch }
+        if (clean.title !== undefined) clean.title = sanitizeSingleLine(clean.title)
+        if (clean.description !== undefined) clean.description = sanitizeText(clean.description)
+        if (clean.capacity !== undefined)
+          clean.capacity = clampInt(clean.capacity, LIMITS.capacityMin, LIMITS.capacityMax)
+
+        // Validate the resulting event still makes sense.
+        const merged = { ...ev, ...clean }
+        const errs = validateEventDraft({
+          title: merged.title,
+          description: merged.description,
+          location: buildingById[merged.buildingId]?.name ?? merged.buildingId,
+          start: merged.start,
+          end: merged.end,
+          capacity: merged.capacity,
+        })
+        // Editing an already-started event shouldn't fail purely on the "in the past"
+        // rule, so only block on the field(s) the editor actually touched.
+        const relevant = (['title', 'description', 'capacity'] as const).filter(
+          (k) => clean[k] !== undefined,
+        )
+        const timeTouched = clean.start !== undefined || clean.end !== undefined
+        const blocking =
+          relevant.some((k) => errs[k]) || (timeTouched && errs.time)
+        if (blocking) return { ok: false, reason: errs.title ?? errs.time ?? errs.capacity ?? errs.description }
+
+        const timeChanged =
+          (clean.start !== undefined && clean.start !== ev.start) ||
+          (clean.end !== undefined && clean.end !== ev.end)
+
+        set((state) => {
+          const notifs = timeChanged
+            ? state.events
+                .find((e) => e.id === eventId)!
+                .attendeeIds.filter((uid) => uid !== me.id)
+                .map((uid) =>
+                  makeNotif(uid, 'eventUpdated', {
+                    title: 'Time changed',
+                    body: `${merged.title} was rescheduled.`,
+                    eventId,
+                  }),
+                )
+            : []
+          return {
+            events: replaceById(state.events, eventId, (e) => ({ ...e, ...clean })),
+            notifications: [...state.notifications, ...notifs],
+          }
+        })
+        return { ok: true }
+      },
+
+      toggleCheckIn: (eventId, userId) => {
+        const me = get().currentUser()
+        const ev = get().events.find((e) => e.id === eventId)
+        if (!ev) return { ok: false, reason: 'Event not found.' }
+        if (!canManageEvent(ev, me)) return { ok: false, reason: 'Only the host runs the door.' }
+        set((state) => ({
+          events: replaceById(state.events, eventId, (e) => {
+            const list = e.checkedInIds ?? []
+            return {
+              ...e,
+              checkedInIds: list.includes(userId)
+                ? list.filter((id) => id !== userId)
+                : [...list, userId],
+            }
+          }),
+        }))
+        return { ok: true }
+      },
+
+      toggleFollow: (id) =>
+        set((state) => {
+          const meId = get().currentUser().id
+          if (id === meId) return {}
+          const list = state.followingByUser[meId] ?? []
+          const next = list.includes(id) ? list.filter((x) => x !== id) : [...list, id]
+          return { followingByUser: { ...state.followingByUser, [meId]: next } }
+        }),
+
+      toggleSave: (eventId) =>
+        set((state) => {
+          const meId = get().currentUser().id
+          const list = state.savedByUser[meId] ?? []
+          const next = list.includes(eventId)
+            ? list.filter((x) => x !== eventId)
+            : [...list, eventId]
+          return { savedByUser: { ...state.savedByUser, [meId]: next } }
+        }),
+
+      markAllNotificationsRead: () =>
+        set((state) => {
+          const meId = get().currentUser().id
+          return {
+            notifications: state.notifications.map((n) =>
+              n.userId === meId && !n.read ? { ...n, read: true } : n,
+            ),
+          }
+        }),
+
+      transferAdmin: (clubId, toUserId) => {
+        const me = get().currentUser()
+        const club = get().clubs.find((c) => c.id === clubId)
+        if (!club) return { ok: false, reason: 'Club not found.' }
+        if (!me.adminOf.includes(clubId)) return { ok: false, reason: 'Only an admin can do that.' }
+        if (!club.memberIds.includes(toUserId))
+          return { ok: false, reason: 'Pick a member of this club.' }
+        set((state) => ({
+          clubs: replaceById(state.clubs, clubId, (c) => ({
+            ...c,
+            adminIds: [...c.adminIds.filter((id) => id !== me.id && id !== toUserId), toUserId],
+            memberIds: c.memberIds.includes(toUserId) ? c.memberIds : [...c.memberIds, toUserId],
+          })),
+          users: state.users.map((u) => {
+            if (u.id === me.id) return { ...u, adminOf: u.adminOf.filter((id) => id !== clubId) }
+            if (u.id === toUserId)
+              return {
+                ...u,
+                adminOf: u.adminOf.includes(clubId) ? u.adminOf : [...u.adminOf, clubId],
+              }
+            return u
+          }),
+        }))
+        return { ok: true }
+      },
+
+      // Register an ad-hoc location (from "Create event" → custom place). We write
+      // it into the shared buildingById lookup AND persist it in customBuildings so
+      // it survives a reload.
+      addBuilding: (b) => {
+        buildingById[b.id] = b
+        set((state) =>
+          state.customBuildings.some((x) => x.id === b.id)
+            ? {}
+            : { customBuildings: [...state.customBuildings, b] },
+        )
+      },
+
+      resetDemo: () => set({ ...initialState() }),
     }),
-}))
+    {
+      name: 'hoagiefunctions-state',
+      version: 1,
+      storage: createJSONStorage(makeStorage),
+      partialize: (s) => ({
+        users: s.users,
+        clubs: s.clubs,
+        events: s.events,
+        customBuildings: s.customBuildings,
+        currentUserId: s.currentUserId,
+        viewAs: s.viewAs,
+        followingByUser: s.followingByUser,
+        savedByUser: s.savedByUser,
+        notifications: s.notifications,
+      }),
+      onRehydrateStorage: () => (state) => {
+        // Re-hydrate ad-hoc locations into the shared lookup so cards/maps resolve.
+        if (state?.customBuildings) {
+          for (const b of state.customBuildings) buildingById[b.id] = b
+        }
+      },
+    },
+  ),
+)

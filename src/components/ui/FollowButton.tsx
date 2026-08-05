@@ -16,7 +16,7 @@ export default function FollowButton({
   name: string
   size?: number
 }) {
-  const following = useStore((s) => s.following.includes(id))
+  const following = useStore((s) => s.isFollowing(id))
   const toggleFollow = useStore((s) => s.toggleFollow)
   const push = useToasts((s) => s.push)
 

@@ -45,7 +45,7 @@ export default function EditEventModal({ event, onClose }: { event: CampusEvent;
     const start = new Date(`${date}T${startTime}`)
     let end = new Date(`${date}T${endTime}`)
     if (end.getTime() <= start.getTime()) end = new Date(end.getTime() + 86_400_000)
-    updateEvent(event.id, {
+    const r = updateEvent(event.id, {
       title: title.trim(),
       description: description.trim(),
       start: start.toISOString(),
@@ -55,6 +55,10 @@ export default function EditEventModal({ event, onClose }: { event: CampusEvent;
       reservationConfirmed: hasReservation,
       capacity: capacity.trim() ? Number(capacity) : undefined,
     })
+    if (!r.ok) {
+      push(r.reason ?? 'Could not save changes', 'danger')
+      return
+    }
     push('Event updated', 'success')
     onClose()
   }

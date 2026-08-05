@@ -106,6 +106,7 @@ export interface CampusEvent {
   applicants: EventApplicant[];
   capacity?: number;
   checkedInIds?: string[];   // attendees checked in at the door (admin/host tool)
+  waitlistIds?: string[];    // users waiting for a spot once the event is full
 }
 
 // ----------------------------------------------------------------------------
