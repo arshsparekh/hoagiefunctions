@@ -9,6 +9,7 @@ export type NotificationKind =
   | 'autoAccepted'
   | 'applicationApproved'
   | 'applicationDenied'
+  | 'newApplication'
   | 'membershipApproved'
   | 'newEventFromFollowed'
   | 'eventUpdated'
@@ -44,6 +45,7 @@ export function notificationAccent(kind: NotificationKind): 'success' | 'pink' |
       return 'success'
     case 'newEventFromFollowed':
     case 'eventUpdated':
+    case 'newApplication':
       return 'pink'
     default:
       return 'muted'

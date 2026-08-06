@@ -491,20 +491,40 @@ export const useStore = create<AppState>()(
 
         const status: Extract<ApplicantStatus, 'auto' | 'pending'> = holdsBadge ? 'auto' : 'pending'
 
-        set((state) => ({
-          events: replaceById(state.events, eventId, (e) => ({
-            ...e,
-            applicants: [...e.applicants, { userId: me.id, status }],
-            attendeeIds:
-              holdsBadge && !e.attendeeIds.includes(me.id)
-                ? [...e.attendeeIds, me.id]
-                : e.attendeeIds,
-          })),
-          users: replaceById(state.users, me.id, (u) => ({
-            ...u,
-            applications: [...u.applications, { eventId, status }],
-          })),
-        }))
+        set((state) => {
+          // A pending request needs a manager's attention - notify them.
+          const managerIds =
+            ev.hostType === 'individual'
+              ? [ev.hostId]
+              : state.users.filter((u) => u.adminOf.includes(ev.hostId)).map((u) => u.id)
+          const notifs =
+            status === 'pending'
+              ? managerIds
+                  .filter((id) => id !== me.id)
+                  .map((id) =>
+                    makeNotif(id, 'newApplication', {
+                      title: 'New request to attend',
+                      body: `${me.name} wants to join ${ev.title}.`,
+                      eventId,
+                    }),
+                  )
+              : []
+          return {
+            events: replaceById(state.events, eventId, (e) => ({
+              ...e,
+              applicants: [...e.applicants, { userId: me.id, status }],
+              attendeeIds:
+                holdsBadge && !e.attendeeIds.includes(me.id)
+                  ? [...e.attendeeIds, me.id]
+                  : e.attendeeIds,
+            })),
+            users: replaceById(state.users, me.id, (u) => ({
+              ...u,
+              applications: [...u.applications, { eventId, status }],
+            })),
+            notifications: [...state.notifications, ...notifs],
+          }
+        })
         return { ok: true, status }
       },
 
@@ -556,6 +576,14 @@ export const useStore = create<AppState>()(
             ...u,
             applications: u.applications.filter((ap) => ap.eventId !== eventId),
           })),
+          notifications: [
+            ...state.notifications,
+            makeNotif(userId, 'applicationDenied', {
+              title: 'Request not approved',
+              body: `Your request for ${ev.title} wasn't approved.`,
+              eventId,
+            }),
+          ],
         }))
         return { ok: true }
       },

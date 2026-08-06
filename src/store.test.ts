@@ -154,6 +154,30 @@ describe('notifications fan-out', () => {
     )
     expect(notif).toBeTruthy()
   })
+
+  it('notifies the host when someone requests a guestlist spot', () => {
+    // Arsh (admin of Hoagie Club) posts a guestlist event as the club.
+    const created = s().createEvent(
+      arshEvent({
+        hostType: 'club',
+        hostId: 'e-club',
+        hostName: 'Hoagie Club',
+        accessType: 'guestlist',
+      }),
+    )
+    if (!created.ok) throw new Error('setup failed')
+
+    // A student with no Hoagie Club badge requests to attend -> pending.
+    s().setViewAs('newStudent')
+    const r = s().applyToEvent(created.event.id)
+    expect(r.ok && r.status).toBe('pending')
+
+    // The club's admin (arsh) gets a newApplication notification.
+    const hostNotif = s().notifications.find(
+      (n) => n.userId === 'u-arsh' && n.kind === 'newApplication' && n.eventId === created.event.id,
+    )
+    expect(hostNotif).toBeTruthy()
+  })
 })
 
 describe('per-user follows and saves are isolated by viewer', () => {
