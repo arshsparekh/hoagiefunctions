@@ -1,8 +1,8 @@
 import L from 'leaflet'
 
 /**
- * Purple teardrop pin as a Leaflet divIcon (sidesteps Leaflet's broken default
- * PNG marker under bundlers). Fixed 40×52 canvas, tip at (20,44):
+ * Brand-pink teardrop pin as a Leaflet divIcon (sidesteps Leaflet's broken
+ * default PNG marker under bundlers). Fixed 40×52 canvas, tip at (20,44):
  *  - `reserved` draws an orange ring around the head.
  *  - `count > 1` stamps a small count badge.
  */

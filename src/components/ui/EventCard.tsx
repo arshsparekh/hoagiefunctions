@@ -42,6 +42,14 @@ export default function EventCard({
   const hostUser = event.hostType === 'individual' ? userById.get(event.hostId) : undefined
   const restricted = audienceLabel(event, clubs)
   const attending = event.attendeeIds.includes(currentUser.id)
+  const full = event.capacity !== undefined && event.attendeeIds.length >= event.capacity
+  const waiting = event.waitlistIds?.length ?? 0
+  const fullChip =
+    full && !attending ? (
+      <span className="inline-flex shrink-0 items-center rounded-sm bg-warning-bg px-1.5 py-0.5 text-[11px] font-semibold text-[#8A6410]">
+        {waiting > 0 ? `Waitlist · ${waiting}` : 'Full'}
+      </span>
+    ) : null
 
   // Green highlight around events the current user is attending.
   const shell = `group block rounded-md border shadow-hoagie transition-all duration-150 ${
@@ -93,12 +101,15 @@ export default function EventCard({
               {event.hostName}
             </span>
           ) : null}
-          {attendees.length > 0 && (
-            <span className="ml-auto text-[12px] text-muted">
-              {attendees.length}
-              {event.capacity ? ` / ${event.capacity}` : ''} going
-            </span>
-          )}
+          <div className="ml-auto flex items-center gap-1.5">
+            {fullChip}
+            {attendees.length > 0 && (
+              <span className="text-[12px] text-muted">
+                {attendees.length}
+                {event.capacity ? ` / ${event.capacity}` : ''} going
+              </span>
+            )}
+          </div>
         </div>
       </Link>
     )
@@ -165,6 +176,7 @@ export default function EventCard({
             </div>
           )}
           <div className="ml-auto flex items-center gap-3">
+            {fullChip}
             {event.reservationConfirmed && (
               <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-pink-600">
                 <CheckIcon size={14} />

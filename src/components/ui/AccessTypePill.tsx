@@ -9,7 +9,7 @@ const CONFIG: Record<AccessType, { label: string; fill: FillName; Icon: Componen
   guestlist: { label: 'Guestlist', fill: 'orange', Icon: LockIcon },
 }
 
-/** Open (green) / RSVP (purple) / Guestlist (orange), each with an icon. */
+/** Open (green) / RSVP (blue) / Guestlist (orange), each with an icon. */
 export default function AccessTypePill({ type }: { type: AccessType }) {
   const { label, fill, Icon } = CONFIG[type]
   return (
