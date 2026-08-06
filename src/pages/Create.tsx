@@ -37,15 +37,23 @@ export default function Create() {
   )
 
   const now = new Date()
+  // Default to a sensible near-future slot (next hour, 2h long) so the prefilled
+  // form is always valid - a fixed "19:00 today" would be in the past by evening.
+  const defaultStart = new Date(now.getTime() + 60 * 60 * 1000)
+  defaultStart.setMinutes(0, 0, 0)
+  const defaultEnd = new Date(defaultStart.getTime() + 2 * 60 * 60 * 1000)
+
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [hostValue, setHostValue] = useState(() => {
     const preset = params.get('host')
     return preset && adminClubs.some((c) => c.id === preset) ? preset : 'me'
   })
-  const [date, setDate] = useState(`${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`)
-  const [startTime, setStartTime] = useState('19:00')
-  const [endTime, setEndTime] = useState('21:00')
+  const [date, setDate] = useState(
+    `${defaultStart.getFullYear()}-${pad(defaultStart.getMonth() + 1)}-${pad(defaultStart.getDate())}`,
+  )
+  const [startTime, setStartTime] = useState(`${pad(defaultStart.getHours())}:00`)
+  const [endTime, setEndTime] = useState(`${pad(defaultEnd.getHours())}:00`)
 
   // Location autocomplete
   const [locQuery, setLocQuery] = useState('')

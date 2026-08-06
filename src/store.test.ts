@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useStore } from './store'
 import type { CreateEventInput } from './store'
+import type { CampusEvent } from './data/seed'
 
 const s = () => useStore.getState()
 
@@ -134,6 +135,39 @@ describe('authorization guards (defense in depth)', () => {
     expect(club.adminIds).toContain('u-maya')
     expect(club.adminIds).not.toContain('u-arsh')
     expect(s().users.find((u) => u.id === 'u-arsh')!.adminOf).not.toContain('e-club')
+  })
+})
+
+describe('updateEvent time handling', () => {
+  it('edits a past event when time is unchanged, but blocks a newly-invalid time', () => {
+    const start = new Date(Date.now() - 3 * 86_400_000).toISOString()
+    const end = new Date(Date.now() - 3 * 86_400_000 + 2 * 3_600_000).toISOString()
+    const pastEvent: CampusEvent = {
+      id: 'ev-past-test',
+      title: 'Old Jam',
+      description: '',
+      hostType: 'individual',
+      hostId: 'u-arsh',
+      hostName: 'Arsh Parekh',
+      buildingId: 'b-frist',
+      start,
+      end,
+      accessType: 'open',
+      tags: [],
+      reservationConfirmed: false,
+      attendeeIds: [],
+      applicants: [],
+    }
+    useStore.setState((st) => ({ events: [...st.events, pastEvent] }))
+
+    // The edit form re-sends the same start/end; a title change must still succeed.
+    expect(s().updateEvent('ev-past-test', { title: 'Renamed', start, end }).ok).toBe(true)
+    expect(s().events.find((e) => e.id === 'ev-past-test')!.title).toBe('Renamed')
+
+    // Actually moving the event to a past time is rejected.
+    const newStart = new Date(Date.now() - 2 * 86_400_000).toISOString()
+    const newEnd = new Date(Date.now() - 2 * 86_400_000 + 2 * 3_600_000).toISOString()
+    expect(s().updateEvent('ev-past-test', { start: newStart, end: newEnd }).ok).toBe(false)
   })
 })
 

@@ -60,7 +60,10 @@ export default function Home() {
     return () => clearTimeout(t)
   }, [])
 
-  const visible = store.visibleEvents()
+  // Forward-looking feed: drop events that have already ended (same rule as the map).
+  const nowMs = now.getTime()
+  const isLive = (e: CampusEvent) => new Date(e.end).getTime() >= nowMs
+  const visible = store.visibleEvents().filter(isLive)
 
   // The days that actually have events -> the date strip.
   const days = [...new Set(visible.map((e) => dayKey(new Date(e.start))))]
@@ -76,7 +79,8 @@ export default function Home() {
   const passes = (e: CampusEvent) => passesTags(e) && passesDay(e)
 
   // Recommended strip only in the default "all dates" view.
-  const recommended = day === null ? store.recommendedEvents().filter(passes).slice(0, 3) : []
+  const recommended =
+    day === null ? store.recommendedEvents().filter(isLive).filter(passes).slice(0, 3) : []
   const recommendedIds = new Set(recommended.map((e) => e.id))
   const rest = visible
     .filter((e) => !recommendedIds.has(e.id) && passes(e))

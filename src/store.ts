@@ -87,11 +87,19 @@ const freshUsers = (): User[] => [...structuredClone(seedUsers), makeGuest()]
 const freshClubs = (): Club[] => structuredClone(seedClubs)
 const freshEvents = (): CampusEvent[] => structuredClone(seedEvents)
 
-// Monotonic id sources for things created during the session.
-let createdCount = 0
-const nextEventId = () => `ev-new-${(++createdCount).toString(36)}`
-let notifSeq = 0
-const nextNotifId = () => `n-${Date.now().toString(36)}-${(++notifSeq).toString(36)}`
+// Collision-free ids. A module counter alone would reset on reload and clash
+// with already-persisted `ev-new-1` etc., so we base ids on a UUID (with a
+// timestamp+random fallback for very old runtimes).
+let idSeq = 0
+function uid(prefix: string): string {
+  const c = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto
+  const rand = c?.randomUUID
+    ? c.randomUUID()
+    : `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}${(++idSeq).toString(36)}`
+  return `${prefix}-${rand}`
+}
+const nextEventId = () => uid('ev-new')
+const nextNotifId = () => uid('n')
 
 function makeNotif(
   userId: string,
@@ -751,19 +759,18 @@ export const useStore = create<AppState>()(
           end: merged.end,
           capacity: merged.capacity,
         })
-        // Editing an already-started event shouldn't fail purely on the "in the past"
-        // rule, so only block on the field(s) the editor actually touched.
-        const relevant = (['title', 'description', 'capacity'] as const).filter(
-          (k) => clean[k] !== undefined,
-        )
-        const timeTouched = clean.start !== undefined || clean.end !== undefined
-        const blocking =
-          relevant.some((k) => errs[k]) || (timeTouched && errs.time)
-        if (blocking) return { ok: false, reason: errs.title ?? errs.time ?? errs.capacity ?? errs.description }
-
+        // The edit form always re-sends start/end, so only re-validate the time when
+        // it ACTUALLY changed - otherwise fixing a typo on an event that has already
+        // started would be blocked by the "in the past" rule.
         const timeChanged =
           (clean.start !== undefined && clean.start !== ev.start) ||
           (clean.end !== undefined && clean.end !== ev.end)
+        const relevant = (['title', 'description', 'capacity'] as const).filter(
+          (k) => clean[k] !== undefined,
+        )
+        const blocking = relevant.some((k) => errs[k]) || (timeChanged && errs.time)
+        if (blocking)
+          return { ok: false, reason: errs.title ?? errs.time ?? errs.capacity ?? errs.description }
 
         set((state) => {
           const notifs = timeChanged
