@@ -24,8 +24,10 @@ approve members, and check people in at the door.
 - **Create + manage** - post as yourself or a club you run; edit details; run a
   door check-in roster and export it as CSV; approve the guestlist. Cards show a
   "Full" / "Waitlist" chip once an event hits capacity.
-- **Notifications** - a per-user feed: approvals, waitlist promotions, and new
-  events from clubs/people you follow. Unread count in the nav.
+- **Discussion** - a comment thread on every event; authors delete their own,
+  hosts moderate, and hosts are notified of new comments.
+- **Notifications** - a per-user feed: approvals, waitlist promotions, new
+  comments, and new events from clubs/people you follow. Unread count in the nav.
 - **Search** across events (visibility-aware), clubs, and people.
 - **Saved events**, **follow** clubs/people, **share** links, and **add to
   calendar** (`.ics`).
@@ -41,9 +43,10 @@ not a reset-on-refresh demo.
   the exact same predicates as Postgres row-level security - the real boundary.
 - **Input is validated + sanitized** in one place (`src/lib/validation.ts`),
   mirrored by `check` constraints in the schema.
-- **It's tested.** `npm test` runs a Vitest suite over validation, datetime,
-  visibility, notifications, `.ics`, and the store's authorization / waitlist /
-  notification logic.
+- **It's tested.** `npm test` runs a Vitest suite (60+ tests) over validation,
+  datetime, visibility, notifications, `.ics`/CSV, and the store's
+  authorization / waitlist / comment / lifecycle logic, plus a few component
+  tests via React Testing Library.
 - **It's built to graduate to a backend.** `supabase/` holds the full Postgres
   schema, RLS policies, and atomic RPCs (capacity/waitlist, notification
   fan-out). The store is the single seam to swap `localStorage` for Supabase.

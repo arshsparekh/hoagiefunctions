@@ -34,7 +34,7 @@ docs/                 This file + SECURITY.md.
 
 ### State (`store.ts`)
 
-- One Zustand store holds `users`, `clubs`, `events`, plus per-user
+- One Zustand store holds `users`, `clubs`, `events`, `comments`, plus per-user
   `followingByUser`, `savedByUser`, and a flat `notifications` list.
 - **Persistence:** wrapped in `persist` (localStorage, with an in-memory fallback
   for tests/SSR). `partialize` stores only data; `onRehydrateStorage` re-hydrates
