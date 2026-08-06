@@ -857,6 +857,13 @@ export const useStore = create<AppState>()(
             rsvps: u.rsvps.filter((id) => id !== eventId),
             applications: u.applications.filter((a) => a.eventId !== eventId),
           })),
+          // Drop the dead event id from everyone's saved lists.
+          savedByUser: Object.fromEntries(
+            Object.entries(state.savedByUser).map(([uid, ids]) => [
+              uid,
+              ids.filter((id) => id !== eventId),
+            ]),
+          ),
           notifications: [
             // Drop notifications that pointed at the now-deleted event...
             ...state.notifications.filter((n) => n.eventId !== eventId),

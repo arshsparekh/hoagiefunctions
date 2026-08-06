@@ -205,12 +205,14 @@ describe('deleteEvent', () => {
     if (!created.ok) throw new Error('setup failed')
     const id = created.event.id
     s().rsvp(id) // arsh going
+    s().toggleSave(id) // arsh saves it
     s().setViewAs('newStudent')
     s().rsvp(id) // guest going
     s().setViewAs('me')
 
     expect(s().deleteEvent(id).ok).toBe(true)
     expect(s().events.find((e) => e.id === id)).toBeUndefined()
+    expect(s().isSaved(id)).toBe(false) // stale saved id cleaned up
     expect(s().users.find((u) => u.id === 'u-guest')!.rsvps).not.toContain(id)
     expect(
       s().notifications.some((n) => n.userId === 'u-guest' && n.title === 'Event canceled'),
