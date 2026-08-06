@@ -255,11 +255,17 @@ data in **`src/data/seed.ts`**. Rules:
   re-hydrates custom buildings into `buildingById`. `resetDemo()` re-seeds a clean
   state (and thereby clears storage).
 - **Authorization is in the store, not just the UI.** Every privileged mutation
-  (`updateEvent`, `toggleCheckIn`, `approveApplicant`/`denyApplicant`,
+  (`updateEvent`, `deleteEvent`, `toggleCheckIn`, `approveApplicant`/`denyApplicant`,
   `approveMember`/`denyMember`, `transferAdmin`, and club-posting in `createEvent`)
   checks `canManageEvent` / admin-of-club and returns `ActionResult`
   (`{ ok, reason }`). Callers surface the reason on failure. Keep new mutations
   guarded the same way; `supabase/policies.sql` mirrors these as RLS.
+- **Full lifecycle, self-service actions** exist for every join: `leaveClub`
+  (also cancels a pending request; admins must `transferAdmin` first),
+  `withdrawApplication` (back out of a guestlist), `cancelRsvp` (also leaves a
+  waitlist), `deleteEvent` (host cancels; cleans up refs + notifies attendees).
+  When adding a "join"-type action, add its matching "leave" and keep references
+  (rsvps/applications/notifications) cleaned up.
 - **Per-user data** (`followingByUser`, `savedByUser`) is keyed by the effective
   user id via `toggleFollow`/`toggleSave`; use the `isFollowing`/`isSaved`/
   `myFollowing`/`savedEvents` selectors (they return primitives/whole-store views -
