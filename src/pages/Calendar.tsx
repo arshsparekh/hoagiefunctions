@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { useStore } from '../store'
 import type { CampusEvent } from '../data/seed'
 import EventCard from '../components/ui/EventCard'
 import Button from '../components/ui/Button'
 import TypeFilter from '../components/ui/TypeFilter'
+import { useDialog } from '../lib/useDialog'
 import { ChevronLeftIcon, ChevronRightIcon, XIcon, CalendarIcon } from '../components/icons'
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -21,11 +22,8 @@ function DayPanel({
   events: CampusEvent[]
   onClose: () => void
 }) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [onClose])
+  const panelRef = useRef<HTMLDivElement>(null)
+  useDialog(panelRef, onClose)
 
   const title = date.toLocaleDateString('en-US', {
     weekday: 'long',
@@ -36,9 +34,18 @@ function DayPanel({
   return (
     <div className="fixed inset-0 z-50 flex flex-col sm:flex-row sm:items-center sm:justify-center">
       <button aria-label="Close" onClick={onClose} className="absolute inset-0 bg-black/30" />
-      <div className="hf-sheet-up relative z-10 mt-auto max-h-[80vh] w-full overflow-y-auto rounded-t-md bg-white p-4 shadow-hoagie sm:mt-0 sm:w-[440px] sm:max-w-[calc(100vw-2rem)] sm:rounded-md">
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="day-panel-title"
+        tabIndex={-1}
+        className="hf-sheet-up relative z-10 mt-auto max-h-[80vh] w-full overflow-y-auto rounded-t-md bg-white p-4 shadow-hoagie focus:outline-none sm:mt-0 sm:w-[440px] sm:max-w-[calc(100vw-2rem)] sm:rounded-md"
+      >
         <div className="mb-3 flex items-center justify-between gap-3">
-          <h2 className="font-brand text-[18px] font-bold text-pink-900">{title}</h2>
+          <h2 id="day-panel-title" className="font-brand text-[18px] font-bold text-pink-900">
+            {title}
+          </h2>
           <button
             onClick={onClose}
             aria-label="Close"

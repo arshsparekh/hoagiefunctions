@@ -1,5 +1,7 @@
 # hoagiefunctions
 
+[![CI](https://github.com/arshsparekh/hoagiefunctions/actions/workflows/ci.yml/badge.svg)](https://github.com/arshsparekh/hoagiefunctions/actions/workflows/ci.yml)
+
 Every function on campus, in one place. A mobile-first PWA for Princeton events -
 eating-club nights, dorm parties, club GBMs, listening parties - built in the
 Hoagie style. Browse a personalized feed, see what's happening on a live campus

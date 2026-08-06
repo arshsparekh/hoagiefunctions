@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { useStore, tags } from '../../store'
+import { useDialog } from '../../lib/useDialog'
 import { useToasts } from '../../lib/toast'
 import type { AccessType, CampusEvent } from '../../data/seed'
 import AccessTypePill from './AccessTypePill'
@@ -33,39 +34,8 @@ export default function EditEventModal({ event, onClose }: { event: CampusEvent;
   const dialogRef = useRef<HTMLFormElement>(null)
   const titleInputRef = useRef<HTMLInputElement>(null)
 
-  // Accessible dialog behavior: focus the first field on open, keep Tab focus
-  // inside the dialog, close on Escape, and restore focus to the opener on close.
-  useEffect(() => {
-    const opener = document.activeElement as HTMLElement | null
-    titleInputRef.current?.focus()
-
-    const onKey = (ev: KeyboardEvent) => {
-      if (ev.key === 'Escape') {
-        onClose()
-        return
-      }
-      if (ev.key !== 'Tab' || !dialogRef.current) return
-      const focusable = dialogRef.current.querySelectorAll<HTMLElement>(
-        'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
-      )
-      if (focusable.length === 0) return
-      const first = focusable[0]
-      const last = focusable[focusable.length - 1]
-      if (ev.shiftKey && document.activeElement === first) {
-        ev.preventDefault()
-        last.focus()
-      } else if (!ev.shiftKey && document.activeElement === last) {
-        ev.preventDefault()
-        first.focus()
-      }
-    }
-
-    document.addEventListener('keydown', onKey)
-    return () => {
-      document.removeEventListener('keydown', onKey)
-      opener?.focus?.()
-    }
-  }, [onClose])
+  // Focus the title field on open; trap Tab; Escape closes; restore focus on close.
+  useDialog(dialogRef, onClose, titleInputRef)
 
   const toggleTag = (id: string) =>
     setSelectedTags((t) => (t.includes(id) ? t.filter((x) => x !== id) : [...t, id]))
