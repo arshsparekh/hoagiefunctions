@@ -111,6 +111,30 @@ describe('authorization guards (defense in depth)', () => {
     const asOther = s().createEvent(arshEvent()) // hostId u-arsh but current user is guest
     expect(asOther.ok).toBe(false)
   })
+
+  it('only a club admin can approve members', () => {
+    // Guest is not an admin of Hoagie Club - approval must be refused and a no-op.
+    s().setViewAs('newStudent')
+    const r = s().approveMember('e-club', 'u-theo')
+    expect(r.ok).toBe(false)
+    const club = s().clubs.find((c) => c.id === 'e-club')!
+    expect(club.memberIds).not.toContain('u-theo') // u-theo was pending, still not a member
+    expect(club.pendingIds).toContain('u-theo')
+  })
+
+  it('transferAdmin requires being an admin and a member target', () => {
+    // A non-admin cannot transfer.
+    s().setViewAs('newStudent')
+    expect(s().transferAdmin('e-club', 'u-maya').ok).toBe(false)
+
+    // Arsh (admin) can hand off to a member (u-maya); afterwards arsh is no longer admin.
+    s().setViewAs('me')
+    expect(s().transferAdmin('e-club', 'u-maya').ok).toBe(true)
+    const club = s().clubs.find((c) => c.id === 'e-club')!
+    expect(club.adminIds).toContain('u-maya')
+    expect(club.adminIds).not.toContain('u-arsh')
+    expect(s().users.find((u) => u.id === 'u-arsh')!.adminOf).not.toContain('e-club')
+  })
 })
 
 describe('createEvent validation', () => {

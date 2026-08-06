@@ -22,6 +22,7 @@ function iconFor(kind: AppNotification['kind']) {
     case 'eventUpdated':
       return CalendarIcon
     case 'membershipApproved':
+    case 'newApplication':
       return UsersIcon
     case 'applicationApproved':
     case 'autoAccepted':
