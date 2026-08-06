@@ -100,16 +100,42 @@ export default function ClubDetail() {
       {/* Membership button */}
       <div className="mt-5">
         {isMember ? (
-          <span className="inline-flex items-center gap-1.5 rounded-md bg-success-bg px-3 py-2 text-[14px] font-semibold text-[#2E8B67]">
-            <CheckIcon size={16} />
-            Member
-          </span>
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="inline-flex items-center gap-1.5 rounded-md bg-success-bg px-3 py-2 text-[14px] font-semibold text-[#2E8B67]">
+              <CheckIcon size={16} />
+              Member
+            </span>
+            {!isAdmin && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  const r = store.leaveClub(club.id)
+                  push(r.ok ? `Left ${club.name}` : (r.reason ?? 'Could not leave'), r.ok ? 'neutral' : 'danger')
+                }}
+              >
+                Leave club
+              </Button>
+            )}
+            {isAdmin && (
+              <span className="text-[12px] text-muted">Pass admin to leave the club.</span>
+            )}
+          </div>
         ) : isPending ? (
-          <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-3">
             <Button variant="secondary" disabled>
               Request pending
             </Button>
-            <span className="text-[12px] text-muted">Waiting on an admin.</span>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                store.leaveClub(club.id)
+                push('Request canceled', 'neutral')
+              }}
+            >
+              Cancel request
+            </Button>
           </div>
         ) : (
           <Button

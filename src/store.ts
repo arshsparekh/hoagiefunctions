@@ -235,6 +235,7 @@ export interface AppState {
   approveApplicant: (eventId: string, userId: string) => ActionResult
   denyApplicant: (eventId: string, userId: string) => ActionResult
   joinClub: (clubId: string) => void
+  leaveClub: (clubId: string) => ActionResult
   approveMember: (clubId: string, userId: string) => ActionResult
   denyMember: (clubId: string, userId: string) => ActionResult
   createEvent: (payload: CreateEventInput) => CreateResult
@@ -635,6 +636,29 @@ export const useStore = create<AppState>()(
               : [...u.clubMemberships, { clubId, status: 'pending' }],
           })),
         }))
+      },
+
+      // Leave a club (or cancel a pending request). Admins must pass admin first.
+      leaveClub: (clubId) => {
+        const me = get().currentUser()
+        const club = get().clubs.find((c) => c.id === clubId)
+        if (!club) return { ok: false, reason: 'Club not found.' }
+        if (club.adminIds.includes(me.id)) {
+          return { ok: false, reason: 'Pass admin to another member before leaving.' }
+        }
+        set((state) => ({
+          clubs: replaceById(state.clubs, clubId, (c) => ({
+            ...c,
+            memberIds: c.memberIds.filter((id) => id !== me.id),
+            pendingIds: c.pendingIds.filter((id) => id !== me.id),
+          })),
+          users: replaceById(state.users, me.id, (u) => ({
+            ...u,
+            clubMemberships: u.clubMemberships.filter((m) => m.clubId !== clubId),
+            eatingClubId: u.eatingClubId === clubId ? undefined : u.eatingClubId,
+          })),
+        }))
+        return { ok: true }
       },
 
       approveMember: (clubId, userId) => {

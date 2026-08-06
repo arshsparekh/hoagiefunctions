@@ -266,6 +266,22 @@ describe('notifications fan-out', () => {
   })
 })
 
+describe('leaveClub', () => {
+  it('lets a member leave and clears their eating-club badge', () => {
+    // Arsh is a Terrace member and holds the Terrace badge, but is not its admin.
+    expect(s().leaveClub('terrace').ok).toBe(true)
+    expect(s().clubs.find((c) => c.id === 'terrace')!.memberIds).not.toContain('u-arsh')
+    const arsh = s().users.find((u) => u.id === 'u-arsh')!
+    expect(arsh.clubMemberships.some((m) => m.clubId === 'terrace')).toBe(false)
+    expect(arsh.eatingClubId).toBeUndefined()
+  })
+
+  it('refuses to let an admin leave without passing admin first', () => {
+    expect(s().leaveClub('e-club').ok).toBe(false) // arsh admins Hoagie Club
+    expect(s().clubs.find((c) => c.id === 'e-club')!.memberIds).toContain('u-arsh')
+  })
+})
+
 describe('per-user follows and saves are isolated by viewer', () => {
   it('keeps follow state separate across viewAs', () => {
     s().toggleFollow('cannon') // as arsh
