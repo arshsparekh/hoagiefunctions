@@ -934,12 +934,29 @@ export const useStore = create<AppState>()(
         if (clean.length > LIMITS.commentMax) {
           return { ok: false, reason: `Keep comments under ${LIMITS.commentMax} characters.` }
         }
-        set((state) => ({
-          comments: [
-            ...state.comments,
-            { id: nextCommentId(), eventId, userId: me.id, body: clean, ts: Date.now() },
-          ],
-        }))
+        set((state) => {
+          // Let the event's host(s) know about a new comment (not their own).
+          const managerIds =
+            ev.hostType === 'individual'
+              ? [ev.hostId]
+              : state.users.filter((u) => u.adminOf.includes(ev.hostId)).map((u) => u.id)
+          const notifs = managerIds
+            .filter((id) => id !== me.id)
+            .map((id) =>
+              makeNotif(id, 'newComment', {
+                title: 'New comment',
+                body: `${me.name} commented on ${ev.title}.`,
+                eventId,
+              }),
+            )
+          return {
+            comments: [
+              ...state.comments,
+              { id: nextCommentId(), eventId, userId: me.id, body: clean, ts: Date.now() },
+            ],
+            notifications: [...state.notifications, ...notifs],
+          }
+        })
         return { ok: true }
       },
 

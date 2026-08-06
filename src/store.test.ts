@@ -341,6 +341,19 @@ describe('event comments', () => {
     expect(s().addComment(created.event.id, 'sneaky').ok).toBe(false)
   })
 
+  it('notifies the event host when someone else comments', () => {
+    const created = s().createEvent(
+      arshEvent({ hostType: 'club', hostId: 'e-club', hostName: 'Hoagie Club' }),
+    )
+    if (!created.ok) throw new Error('setup failed')
+    s().setViewAs('newStudent')
+    s().addComment(created.event.id, 'quick question!')
+    const notif = s().notifications.find(
+      (n) => n.userId === 'u-arsh' && n.kind === 'newComment' && n.eventId === created.event.id,
+    )
+    expect(notif).toBeTruthy()
+  })
+
   it('lets the host moderate (delete) other people comments', () => {
     const created = s().createEvent(arshEvent())
     if (!created.ok) throw new Error('setup failed')

@@ -8,7 +8,14 @@ import {
   type AppNotification,
 } from '../lib/notifications'
 import EmptyState from '../components/ui/EmptyState'
-import { BellIcon, CalendarIcon, CheckIcon, UsersIcon, ClockIcon } from '../components/icons'
+import {
+  BellIcon,
+  CalendarIcon,
+  CheckIcon,
+  UsersIcon,
+  ClockIcon,
+  MessageIcon,
+} from '../components/icons'
 
 const ACCENT_CLS = {
   success: 'bg-success-bg text-[#2E8B67]',
@@ -24,6 +31,8 @@ function iconFor(kind: AppNotification['kind']) {
     case 'membershipApproved':
     case 'newApplication':
       return UsersIcon
+    case 'newComment':
+      return MessageIcon
     case 'applicationApproved':
     case 'autoAccepted':
     case 'promotedFromWaitlist':

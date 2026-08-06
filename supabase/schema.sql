@@ -25,8 +25,8 @@ create type applicant_status as enum ('pending', 'approved', 'auto');
 create type follow_target   as enum ('club', 'user');
 create type notification_kind as enum (
   'autoAccepted', 'applicationApproved', 'applicationDenied', 'newApplication',
-  'membershipApproved', 'newEventFromFollowed', 'eventUpdated', 'promotedFromWaitlist',
-  'joinedWaitlist'
+  'newComment', 'membershipApproved', 'newEventFromFollowed', 'eventUpdated',
+  'promotedFromWaitlist', 'joinedWaitlist'
 );
 
 -- --- Clubs -------------------------------------------------------------------

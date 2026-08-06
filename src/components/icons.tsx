@@ -44,6 +44,14 @@ export function BellIcon(props: IconProps) {
   )
 }
 
+export function MessageIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M4 5.5h16a1 1 0 0 1 1 1V16a1 1 0 0 1-1 1H9l-4 3.5V17H4a1 1 0 0 1-1-1V6.5a1 1 0 0 1 1-1Z" />
+    </Icon>
+  )
+}
+
 export function SearchIcon(props: IconProps) {
   return (
     <Icon {...props}>
