@@ -77,6 +77,7 @@ alter table checkins        enable row level security;
 alter table follows         enable row level security;
 alter table saves           enable row level security;
 alter table notifications   enable row level security;
+alter table comments        enable row level security;
 
 -- --- Public-ish reference data: any signed-in user may read ------------------
 create policy clubs_read     on clubs        for select to authenticated using (true);
@@ -170,6 +171,15 @@ create policy follows_all on follows for all to authenticated
   using (follower_id = auth.uid()) with check (follower_id = auth.uid());
 create policy saves_all on saves for all to authenticated
   using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+-- --- Comments: readable if you can see the event; author posts; author or the
+--     event's manager may delete (moderation). ---------------------------------
+create policy comments_read on comments for select to authenticated
+  using (can_see_event(event_id));
+create policy comments_insert on comments for insert to authenticated
+  with check (user_id = auth.uid() and can_see_event(event_id));
+create policy comments_delete on comments for delete to authenticated
+  using (user_id = auth.uid() or can_manage_event(event_id));
 
 -- --- Notifications: read/patch your own; creation is server-side only --------
 create policy notifs_read on notifications for select to authenticated

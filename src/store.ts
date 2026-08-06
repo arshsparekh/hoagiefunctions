@@ -32,6 +32,7 @@ import type {
   Building,
   CampusEvent,
   EventApplicant,
+  EventComment,
   ApplicantStatus,
 } from './data/seed'
 import { canSeeEvent, canManageEvent } from './lib/visibility'
@@ -100,6 +101,7 @@ function uid(prefix: string): string {
 }
 const nextEventId = () => uid('ev-new')
 const nextNotifId = () => uid('n')
+const nextCommentId = () => uid('c')
 
 function makeNotif(
   userId: string,
@@ -153,6 +155,36 @@ function seedNotifications(usersArr: User[], eventsArr: CampusEvent[]): AppNotif
     // stagger into the recent past so the timestamps read naturally
     ts: Date.now() - (i + 1) * 3_600_000,
   }))
+}
+
+// A few starter comments so an event's discussion isn't empty on first open.
+// Derived from real attendee ids on upcoming events, so nothing dangles.
+const COMMENT_BODIES = [
+  'Pulling up for sure.',
+  'Is there a coat check?',
+  'Can I bring a +1?',
+  'What time does the line usually die down?',
+  'Been waiting all week for this.',
+  'Do we need our badge at the door?',
+]
+function seedComments(eventsArr: CampusEvent[]): EventComment[] {
+  const upcoming = eventsArr
+    .filter((e) => new Date(e.start).getTime() >= Date.now() && e.attendeeIds.length >= 2)
+    .sort((a, b) => (a.start < b.start ? -1 : 1))
+    .slice(0, 2)
+  const out: EventComment[] = []
+  upcoming.forEach((e, ei) => {
+    e.attendeeIds.slice(0, 2).forEach((userId, ci) => {
+      out.push({
+        id: `c-seed-${ei}-${ci}`,
+        eventId: e.id,
+        userId,
+        body: COMMENT_BODIES[(ei * 2 + ci) % COMMENT_BODIES.length],
+        ts: Date.now() - (out.length + 1) * 1_800_000,
+      })
+    })
+  })
+  return out
 }
 
 // ---------------------------------------------------------------------------
@@ -210,6 +242,7 @@ export interface AppState {
   followingByUser: Record<string, string[]>
   savedByUser: Record<string, string[]>
   notifications: AppNotification[]
+  comments: EventComment[]
 
   // Selectors
   currentUser: () => User
@@ -225,6 +258,7 @@ export interface AppState {
   savedEvents: () => CampusEvent[]
   myNotifications: () => AppNotification[]
   unreadCount: () => number
+  commentsForEvent: (eventId: string) => EventComment[]
 
   // Actions
   setViewAs: (v: ViewAs) => void
@@ -241,6 +275,8 @@ export interface AppState {
   createEvent: (payload: CreateEventInput) => CreateResult
   updateEvent: (eventId: string, patch: EventEdit) => ActionResult
   deleteEvent: (eventId: string) => ActionResult
+  addComment: (eventId: string, body: string) => ActionResult
+  deleteComment: (commentId: string) => ActionResult
   toggleCheckIn: (eventId: string, userId: string) => ActionResult
   toggleFollow: (id: string) => void
   toggleSave: (eventId: string) => void
@@ -329,6 +365,7 @@ function initialState() {
     followingByUser: {} as Record<string, string[]>,
     savedByUser: {} as Record<string, string[]>,
     notifications: seedNotifications(users, events),
+    comments: seedComments(events),
   }
 }
 
@@ -393,6 +430,10 @@ export const useStore = create<AppState>()(
         const meId = get().currentUser().id
         return get().notifications.filter((n) => n.userId === meId && !n.read).length
       },
+      commentsForEvent: (eventId) =>
+        get()
+          .comments.filter((c) => c.eventId === eventId)
+          .sort((a, b) => a.ts - b.ts),
 
       // --- Actions -----------------------------------------------------------
 
@@ -852,6 +893,7 @@ export const useStore = create<AppState>()(
         if (!canManageEvent(ev, me)) return { ok: false, reason: 'Only the host can cancel this.' }
         set((state) => ({
           events: state.events.filter((e) => e.id !== eventId),
+          comments: state.comments.filter((c) => c.eventId !== eventId),
           users: state.users.map((u) => ({
             ...u,
             rsvps: u.rsvps.filter((id) => id !== eventId),
@@ -878,6 +920,38 @@ export const useStore = create<AppState>()(
               ),
           ],
         }))
+        return { ok: true }
+      },
+
+      // Post a comment on an event's discussion (anyone who can see the event).
+      addComment: (eventId, body) => {
+        const me = get().currentUser()
+        const ev = get().events.find((e) => e.id === eventId)
+        if (!ev) return { ok: false, reason: 'Event not found.' }
+        if (!canSeeEvent(ev, me)) return { ok: false, reason: 'This event is private.' }
+        const clean = sanitizeText(body)
+        if (clean.length === 0) return { ok: false, reason: 'Write something first.' }
+        if (clean.length > LIMITS.commentMax) {
+          return { ok: false, reason: `Keep comments under ${LIMITS.commentMax} characters.` }
+        }
+        set((state) => ({
+          comments: [
+            ...state.comments,
+            { id: nextCommentId(), eventId, userId: me.id, body: clean, ts: Date.now() },
+          ],
+        }))
+        return { ok: true }
+      },
+
+      // Delete a comment (its author, or the event's host/admin can moderate).
+      deleteComment: (commentId) => {
+        const me = get().currentUser()
+        const comment = get().comments.find((c) => c.id === commentId)
+        if (!comment) return { ok: false, reason: 'Comment not found.' }
+        const ev = get().events.find((e) => e.id === comment.eventId)
+        const allowed = comment.userId === me.id || (ev ? canManageEvent(ev, me) : false)
+        if (!allowed) return { ok: false, reason: 'You can only delete your own comments.' }
+        set((state) => ({ comments: state.comments.filter((c) => c.id !== commentId) }))
         return { ok: true }
       },
 
@@ -984,6 +1058,7 @@ export const useStore = create<AppState>()(
         followingByUser: s.followingByUser,
         savedByUser: s.savedByUser,
         notifications: s.notifications,
+        comments: s.comments,
       }),
       onRehydrateStorage: () => (state) => {
         // Re-hydrate ad-hoc locations into the shared lookup so cards/maps resolve.

@@ -88,6 +88,14 @@ export interface EventApplicant {
   status: ApplicantStatus;
 }
 
+export interface EventComment {
+  id: string;
+  eventId: string;
+  userId: string;
+  body: string;
+  ts: number;      // epoch ms
+}
+
 export interface CampusEvent {
   id: string;
   title: string;

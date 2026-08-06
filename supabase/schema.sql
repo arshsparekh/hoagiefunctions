@@ -165,6 +165,14 @@ create table saves (
   primary key (user_id, event_id)
 );
 
+create table comments (
+  id         uuid primary key default gen_random_uuid(),
+  event_id   uuid not null references events (id) on delete cascade,
+  user_id    uuid not null references profiles (id) on delete cascade,
+  body       text not null check (char_length(body) between 1 and 500),
+  created_at timestamptz not null default now()
+);
+
 create table notifications (
   id         uuid primary key default gen_random_uuid(),
   user_id    uuid not null references profiles (id) on delete cascade, -- recipient
@@ -187,3 +195,4 @@ create index club_members_user_idx     on club_members (user_id);
 create index club_admins_user_idx      on club_admins (user_id);
 create index follows_target_idx        on follows (target_type, target_id);
 create index notifications_user_unread_idx on notifications (user_id, read, created_at desc);
+create index comments_event_idx        on comments (event_id, created_at);

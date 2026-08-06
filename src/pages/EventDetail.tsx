@@ -16,6 +16,7 @@ import MiniMap from '../components/ui/MiniMap'
 import EditEventModal from '../components/ui/EditEventModal'
 import FollowButton from '../components/ui/FollowButton'
 import SaveButton from '../components/ui/SaveButton'
+import EventComments from '../components/ui/EventComments'
 import { PageContainer } from '../components/PageContainer'
 import {
   CalendarIcon,
@@ -557,6 +558,9 @@ export default function EventDetail() {
           )}
         </section>
       )}
+
+      {/* Discussion */}
+      <EventComments eventId={event.id} />
 
       {/* Cancel event (host / club admin) */}
       {canManage && (

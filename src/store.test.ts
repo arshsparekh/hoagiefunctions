@@ -311,6 +311,48 @@ describe('leaveClub', () => {
   })
 })
 
+describe('event comments', () => {
+  it('sanitizes input, lets any viewer post, and restricts deletion to the author', () => {
+    const created = s().createEvent(arshEvent())
+    if (!created.ok) throw new Error('setup failed')
+    const id = created.event.id
+
+    expect(s().addComment(id, '  Hello there  ').ok).toBe(true)
+    const first = s().commentsForEvent(id)
+    expect(first).toHaveLength(1)
+    expect(first[0].body).toBe('Hello there') // trimmed
+    const arshComment = first[0].id
+
+    s().setViewAs('newStudent')
+    expect(s().addComment(id, 'me too').ok).toBe(true) // open event -> guest can post
+    expect(s().deleteComment(arshComment).ok).toBe(false) // not the author
+    expect(s().commentsForEvent(id)).toHaveLength(2)
+
+    s().setViewAs('me')
+    expect(s().deleteComment(arshComment).ok).toBe(true) // author deletes their own
+    expect(s().commentsForEvent(id).some((c) => c.id === arshComment)).toBe(false)
+  })
+
+  it('rejects empty comments and blocks posting on an event you cannot see', () => {
+    const created = s().createEvent(arshEvent({ audience: { kind: 'people', userIds: ['u-maya'] } }))
+    if (!created.ok) throw new Error('setup failed')
+    expect(s().addComment(created.event.id, '   ').ok).toBe(false)
+    s().setViewAs('newStudent')
+    expect(s().addComment(created.event.id, 'sneaky').ok).toBe(false)
+  })
+
+  it('lets the host moderate (delete) other people comments', () => {
+    const created = s().createEvent(arshEvent())
+    if (!created.ok) throw new Error('setup failed')
+    const id = created.event.id
+    s().setViewAs('newStudent')
+    s().addComment(id, 'guest comment')
+    const guestComment = s().commentsForEvent(id)[0]
+    s().setViewAs('me') // arsh hosts this event
+    expect(s().deleteComment(guestComment.id).ok).toBe(true)
+  })
+})
+
 describe('per-user follows and saves are isolated by viewer', () => {
   it('keeps follow state separate across viewAs', () => {
     s().toggleFollow('cannon') // as arsh

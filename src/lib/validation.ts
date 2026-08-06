@@ -11,6 +11,7 @@ export const LIMITS = {
   titleMin: 3,
   titleMax: 80,
   descriptionMax: 1000,
+  commentMax: 500,
   locationMax: 80,
   capacityMin: 1,
   capacityMax: 100_000,
