@@ -22,7 +22,8 @@ approve members, and check people in at the door.
   promote you (with a notification) when a seat frees.
 - **Clubs** - membership requests, admin approvals, and admin succession.
 - **Create + manage** - post as yourself or a club you run; edit details; run a
-  door check-in roster; approve the guestlist.
+  door check-in roster and export it as CSV; approve the guestlist. Cards show a
+  "Full" / "Waitlist" chip once an event hits capacity.
 - **Notifications** - a per-user feed: approvals, waitlist promotions, and new
   events from clubs/people you follow. Unread count in the nav.
 - **Search** across events (visibility-aware), clubs, and people.

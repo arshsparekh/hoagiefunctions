@@ -834,6 +834,7 @@ export const useStore = create<AppState>()(
       markAllNotificationsRead: () =>
         set((state) => {
           const meId = get().currentUser().id
+          if (!state.notifications.some((n) => n.userId === meId && !n.read)) return {}
           return {
             notifications: state.notifications.map((n) =>
               n.userId === meId && !n.read ? { ...n, read: true } : n,

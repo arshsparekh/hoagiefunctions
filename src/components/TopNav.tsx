@@ -49,10 +49,17 @@ export default function TopNav() {
           <SearchIcon size={20} />
         </NavLink>
 
-        <NavLink to="/notifications" aria-label="Notifications" className={iconBtn}>
+        <NavLink
+          to="/notifications"
+          aria-label={unread > 0 ? `Notifications, ${unread} unread` : 'Notifications'}
+          className={iconBtn}
+        >
           <BellIcon size={20} />
           {unread > 0 && (
-            <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-pink-500 px-1 font-mono text-[10px] font-bold leading-none text-white">
+            <span
+              aria-hidden="true"
+              className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-pink-500 px-1 font-mono text-[10px] font-bold leading-none text-white"
+            >
               {unread > 9 ? '9+' : unread}
             </span>
           )}
