@@ -318,6 +318,18 @@ export default function EventDetail() {
         )}
       </div>
 
+      {/* Capacity bar */}
+      {event.capacity !== undefined && (
+        <div className="mt-2 h-1.5 w-full max-w-xs overflow-hidden rounded-full bg-border-muted">
+          <div
+            className={`h-full rounded-full transition-all ${isFull ? 'bg-warning' : 'bg-pink-500'}`}
+            style={{
+              width: `${Math.min(100, Math.round((event.attendeeIds.length / event.capacity) * 100))}%`,
+            }}
+          />
+        </div>
+      )}
+
       {/* Secondary actions: save, share, add to calendar */}
       <div className="mt-4 flex flex-wrap items-center gap-2">
         <SaveButton eventId={event.id} variant="labeled" />

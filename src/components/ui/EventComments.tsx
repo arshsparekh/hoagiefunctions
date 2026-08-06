@@ -44,6 +44,12 @@ export default function EventComments({ eventId }: { eventId: string }) {
           <textarea
             value={body}
             onChange={(e) => setBody(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && body.trim()) {
+                e.preventDefault()
+                onPost()
+              }
+            }}
             placeholder="Add to the discussion…"
             rows={2}
             maxLength={LIMITS.commentMax}
