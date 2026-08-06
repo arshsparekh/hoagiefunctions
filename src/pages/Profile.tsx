@@ -23,6 +23,7 @@ export default function Profile() {
     ids.map((id) => eventById.get(id)).filter((e): e is CampusEvent => Boolean(e))
 
   const saved = store.savedEvents()
+  const waitlisted = store.eventsSorted().filter((e) => (e.waitlistIds ?? []).includes(me.id))
   const following = store.myFollowing()
   const followedClubs = following.map((id) => clubById.get(id)).filter((c): c is Club => Boolean(c))
   const followedPeople = following
@@ -138,6 +139,21 @@ export default function Profile() {
           </div>
         )}
       </section>
+
+      {/* On the waitlist */}
+      {waitlisted.length > 0 && (
+        <section className="mt-8">
+          <SectionHeader
+            title="On the waitlist"
+            subtitle={`${waitlisted.length} event${waitlisted.length === 1 ? '' : 's'}`}
+          />
+          <div className="flex flex-col gap-3">
+            {waitlisted.map((e) => (
+              <EventCard key={e.id} event={e} />
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Following */}
       {(followedClubs.length > 0 || followedPeople.length > 0) && (
