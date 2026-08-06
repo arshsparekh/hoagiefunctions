@@ -57,6 +57,10 @@ export default function ClubDetail() {
     .eventsSorted()
     .filter((e) => e.hostId === club.id && new Date(e.end).getTime() >= Date.now())
 
+  // Lightweight engagement numbers for admins.
+  const totalRsvps = clubEvents.reduce((sum, e) => sum + e.attendeeIds.length, 0)
+  const avgAttendance = clubEvents.length ? Math.round(totalRsvps / clubEvents.length) : 0
+
   // Members this admin could hand the club to (anyone but themselves).
   const transferCandidates = resolve(club.memberIds).filter((u) => u.id !== me.id)
 
@@ -239,6 +243,32 @@ export default function ClubDetail() {
               ))}
             </ul>
           )}
+        </section>
+      )}
+
+      {/* Admin insights */}
+      {isAdmin && clubEvents.length > 0 && (
+        <section className="mt-8">
+          <SectionHeader title="Club insights" subtitle="Only admins see this" />
+          <div className="grid grid-cols-3 gap-2">
+            {[
+              { label: 'Upcoming', value: clubEvents.length },
+              { label: 'Total RSVPs', value: totalRsvps },
+              { label: 'Avg / event', value: avgAttendance },
+            ].map((stat) => (
+              <div
+                key={stat.label}
+                className="rounded-md border border-border bg-white p-3 text-center shadow-hoagie"
+              >
+                <div className="font-brand text-[22px] font-extrabold leading-none text-pink-900">
+                  {stat.value}
+                </div>
+                <div className="mt-1.5 font-mono text-[10px] uppercase tracking-wider text-muted">
+                  {stat.label}
+                </div>
+              </div>
+            ))}
+          </div>
         </section>
       )}
 
