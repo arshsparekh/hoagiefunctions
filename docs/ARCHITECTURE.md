@@ -76,7 +76,9 @@ atomically in Postgres - same behavior, race-safe.
 
 ## Testing
 
-`npm test` runs Vitest over the logic layer: validation, datetime, visibility,
-notifications, `.ics` generation, and the store's authorization / waitlist /
-notification behavior. The store's persistence uses an in-memory storage shim
-under Node so tests need no DOM.
+`npm test` runs the Vitest suite. Logic tests (Node): validation, datetime,
+visibility, notifications, `.ics` generation, and the store's authorization /
+waitlist / notification behavior - the store uses an in-memory storage shim so
+these need no DOM. Component tests (jsdom, via React Testing Library) cover a few
+UI leaves - `SaveButton`, `FollowButton`, `EventCard` - opting into jsdom with a
+`// @vitest-environment jsdom` docblock per file.

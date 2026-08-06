@@ -1,10 +1,16 @@
 import { defineConfig } from 'vitest/config'
+import react from '@vitejs/plugin-react'
 
-// Unit tests run in Node - the store falls back to an in-memory storage shim when
-// `localStorage` is absent, so no DOM is needed for the logic layer.
+// Logic tests run in Node (the store falls back to an in-memory storage shim when
+// `localStorage` is absent). Component tests opt into jsdom per-file with a
+// `// @vitest-environment jsdom` docblock. `globals: true` lets React Testing
+// Library auto-clean between tests.
 export default defineConfig({
+  plugins: [react()],
   test: {
+    globals: true,
     environment: 'node',
-    include: ['src/**/*.test.ts'],
+    setupFiles: ['./src/test/setup.ts'],
+    include: ['src/**/*.test.{ts,tsx}'],
   },
 })
