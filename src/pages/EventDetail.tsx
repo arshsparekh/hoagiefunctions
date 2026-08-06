@@ -32,6 +32,7 @@ import {
 } from '../components/icons'
 import { audienceLabel, canSeeEvent, canManageEvent } from '../lib/visibility'
 import { downloadIcs } from '../lib/ics'
+import { toCsv, downloadCsv } from '../lib/csv'
 
 const HOST_ICON = { individual: UserIcon, club: UsersIcon, eatingClub: UtensilsIcon } as const
 
@@ -155,6 +156,15 @@ export default function EventDetail() {
       url: `${window.location.origin}/event/${event.id}`,
     })
     push('Added to your calendar', 'neutral')
+  }
+
+  const onExportRoster = () => {
+    const rows = [
+      ['Name', 'Class Year', 'Checked in'],
+      ...attendees.map((u) => [u.name, `Class of ${u.classYear}`, checkedIn.has(u.id) ? 'Yes' : 'No']),
+    ]
+    downloadCsv(`${event.title} attendees`, toCsv(rows))
+    push('Roster exported', 'neutral')
   }
 
   const onApply = () => {
@@ -392,6 +402,17 @@ export default function EventDetail() {
           <SectionHeader
             title="Door check-in"
             subtitle={`${checkedIn.size} / ${attendees.length} checked in`}
+            action={
+              attendees.length > 0 ? (
+                <button
+                  type="button"
+                  onClick={onExportRoster}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-white px-3 text-[13px] font-medium text-text transition-colors hover:bg-surface"
+                >
+                  Export CSV
+                </button>
+              ) : undefined
+            }
           />
           {attendees.length === 0 ? (
             <div className="rounded-md border border-border bg-surface px-4 py-6 text-center text-[13px] text-muted">
