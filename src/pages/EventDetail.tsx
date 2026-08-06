@@ -100,7 +100,6 @@ export default function EventDetail() {
 
   const isAttending = event.attendeeIds.includes(me.id)
   const myApplicant = event.applicants.find((a) => a.userId === me.id)
-  const isAdmin = me.adminOf.includes(event.hostId)
   const canManage = canManageEvent(event, me)
 
   const waitlist = event.waitlistIds ?? []
@@ -473,8 +472,8 @@ export default function EventDetail() {
         </section>
       )}
 
-      {/* Manage guestlist (admins of the host club) */}
-      {isAdmin && event.accessType === 'guestlist' && (
+      {/* Manage guestlist (the event's host / club admin) */}
+      {canManage && event.accessType === 'guestlist' && (
         <section className="mt-8">
           <SectionHeader
             title="Manage guestlist"

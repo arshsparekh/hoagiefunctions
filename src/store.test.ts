@@ -105,6 +105,19 @@ describe('authorization guards (defense in depth)', () => {
     expect(s().events.find((e) => e.id === id)!.title).toBe('Late Night Study Jam')
   })
 
+  it('lets an individual host approve an applicant to their own guestlist event', () => {
+    const created = s().createEvent(arshEvent({ accessType: 'guestlist' }))
+    if (!created.ok) throw new Error('setup failed')
+
+    s().setViewAs('newStudent')
+    s().applyToEvent(created.event.id) // guest has no badge -> pending
+
+    s().setViewAs('me') // arsh is the individual host (not a club admin)
+    const r = s().approveApplicant(created.event.id, 'u-guest')
+    expect(r.ok).toBe(true)
+    expect(s().events.find((e) => e.id === created.event.id)!.attendeeIds).toContain('u-guest')
+  })
+
   it('rejects posting as a club you do not admin, or as another person', () => {
     s().setViewAs('newStudent')
     const asClub = s().createEvent(arshEvent({ hostType: 'club', hostId: 'e-club', hostName: 'Hoagie Club' }))
