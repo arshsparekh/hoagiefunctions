@@ -240,6 +240,7 @@ export interface AppState {
   denyMember: (clubId: string, userId: string) => ActionResult
   createEvent: (payload: CreateEventInput) => CreateResult
   updateEvent: (eventId: string, patch: EventEdit) => ActionResult
+  deleteEvent: (eventId: string) => ActionResult
   toggleCheckIn: (eventId: string, userId: string) => ActionResult
   toggleFollow: (id: string) => void
   toggleSave: (eventId: string) => void
@@ -839,6 +840,37 @@ export const useStore = create<AppState>()(
             notifications: [...state.notifications, ...notifs],
           }
         })
+        return { ok: true }
+      },
+
+      // Cancel/delete an event (host or club admin). Attendees are notified and
+      // every dangling rsvp/application/notification reference is cleaned up.
+      deleteEvent: (eventId) => {
+        const me = get().currentUser()
+        const ev = get().events.find((e) => e.id === eventId)
+        if (!ev) return { ok: false, reason: 'Event not found.' }
+        if (!canManageEvent(ev, me)) return { ok: false, reason: 'Only the host can cancel this.' }
+        set((state) => ({
+          events: state.events.filter((e) => e.id !== eventId),
+          users: state.users.map((u) => ({
+            ...u,
+            rsvps: u.rsvps.filter((id) => id !== eventId),
+            applications: u.applications.filter((a) => a.eventId !== eventId),
+          })),
+          notifications: [
+            // Drop notifications that pointed at the now-deleted event...
+            ...state.notifications.filter((n) => n.eventId !== eventId),
+            // ...and tell attendees it was canceled (no eventId - it's gone).
+            ...ev.attendeeIds
+              .filter((id) => id !== me.id)
+              .map((id) =>
+                makeNotif(id, 'eventUpdated', {
+                  title: 'Event canceled',
+                  body: `${ev.title} was canceled by the host.`,
+                }),
+              ),
+          ],
+        }))
         return { ok: true }
       },
 

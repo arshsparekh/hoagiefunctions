@@ -43,6 +43,7 @@ export default function EventDetail() {
   const push = useToasts((s) => s.push)
   const [editing, setEditing] = useState(false)
   const [doorQuery, setDoorQuery] = useState('')
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
 
   const event = store.events.find((e) => e.id === id)
 
@@ -155,6 +156,16 @@ export default function EventDetail() {
       url: `${window.location.origin}/event/${event.id}`,
     })
     push('Added to your calendar', 'neutral')
+  }
+
+  const onDelete = () => {
+    const r = store.deleteEvent(event.id)
+    if (!r.ok) {
+      push(r.reason ?? 'Could not cancel', 'danger')
+      return
+    }
+    push('Event canceled', 'neutral')
+    navigate('/')
   }
 
   const onExportRoster = () => {
@@ -543,6 +554,40 @@ export default function EventDetail() {
                 )
               })}
             </ul>
+          )}
+        </section>
+      )}
+
+      {/* Cancel event (host / club admin) */}
+      {canManage && (
+        <section className="mt-8 border-t border-border pt-6">
+          {!confirmingDelete ? (
+            <button
+              type="button"
+              onClick={() => setConfirmingDelete(true)}
+              className="text-[13px] font-medium text-danger transition-opacity hover:opacity-80"
+            >
+              Cancel this event
+            </button>
+          ) : (
+            <div className="rounded-md border border-danger/40 bg-danger-bg p-4">
+              <p className="text-[14px] font-semibold text-danger">Cancel this event?</p>
+              <p className="mt-1 text-[13px] text-danger">
+                This removes it for everyone and notifies attendees. It can&rsquo;t be undone.
+              </p>
+              <div className="mt-3 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={onDelete}
+                  className="rounded-md bg-danger px-3 py-2 text-[13px] font-semibold text-white transition-opacity hover:opacity-90"
+                >
+                  Yes, cancel it
+                </button>
+                <Button variant="secondary" size="sm" onClick={() => setConfirmingDelete(false)}>
+                  Keep event
+                </Button>
+              </div>
+            </div>
           )}
         </section>
       )}

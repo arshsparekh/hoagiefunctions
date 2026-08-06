@@ -199,6 +199,33 @@ describe('updateEvent time handling', () => {
   })
 })
 
+describe('deleteEvent', () => {
+  it('lets the host delete, cleans up rsvps, and notifies attendees', () => {
+    const created = s().createEvent(arshEvent())
+    if (!created.ok) throw new Error('setup failed')
+    const id = created.event.id
+    s().rsvp(id) // arsh going
+    s().setViewAs('newStudent')
+    s().rsvp(id) // guest going
+    s().setViewAs('me')
+
+    expect(s().deleteEvent(id).ok).toBe(true)
+    expect(s().events.find((e) => e.id === id)).toBeUndefined()
+    expect(s().users.find((u) => u.id === 'u-guest')!.rsvps).not.toContain(id)
+    expect(
+      s().notifications.some((n) => n.userId === 'u-guest' && n.title === 'Event canceled'),
+    ).toBe(true)
+  })
+
+  it('refuses deletion by a non-manager', () => {
+    const created = s().createEvent(arshEvent())
+    if (!created.ok) throw new Error('setup failed')
+    s().setViewAs('newStudent')
+    expect(s().deleteEvent(created.event.id).ok).toBe(false)
+    expect(s().events.find((e) => e.id === created.event.id)).toBeTruthy()
+  })
+})
+
 describe('createEvent validation', () => {
   it('rejects an invalid draft', () => {
     const r = s().createEvent(arshEvent({ title: 'ab' }))
