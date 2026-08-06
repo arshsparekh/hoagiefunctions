@@ -47,6 +47,21 @@ describe('rsvp / cancel', () => {
     expect(s().currentUser().rsvps).not.toContain(id)
   })
 
+  it('lets a user withdraw a guestlist application', () => {
+    const created = s().createEvent(
+      arshEvent({ accessType: 'guestlist', hostType: 'club', hostId: 'e-club', hostName: 'Hoagie Club' }),
+    )
+    if (!created.ok) throw new Error('setup failed')
+
+    s().setViewAs('newStudent')
+    expect(s().applyToEvent(created.event.id).ok).toBe(true) // pending
+    expect(s().withdrawApplication(created.event.id).ok).toBe(true)
+
+    const ev = s().events.find((e) => e.id === created.event.id)!
+    expect(ev.applicants.some((a) => a.userId === 'u-guest')).toBe(false)
+    expect(s().currentUser().applications.some((a) => a.eventId === created.event.id)).toBe(false)
+  })
+
   it('refuses to RSVP to a private event you cannot see', () => {
     const created = s().createEvent(
       arshEvent({ audience: { kind: 'people', userIds: ['u-maya'] } }),

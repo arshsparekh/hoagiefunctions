@@ -176,6 +176,11 @@ export default function EventDetail() {
     else push('Request sent', 'neutral')
   }
 
+  const onWithdraw = () => {
+    store.withdrawApplication(event.id)
+    push('Request withdrawn', 'neutral')
+  }
+
   // --- Primary action state ------------------------------------------------
 
   const guestState =
@@ -342,23 +347,33 @@ export default function EventDetail() {
       <div className="mt-6">
         {event.accessType === 'guestlist' ? (
           guestState === 'auto' || guestState === 'approved' ? (
-            <div className="hf-pop flex items-start gap-3 rounded-md border border-success/40 bg-success-bg p-4">
-              <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-success text-white">
-                <CheckIcon size={18} />
-              </span>
-              <div>
-                <p className="text-[15px] font-bold text-[#2E8B67]">You&rsquo;re on the list.</p>
-                {guestState === 'auto' && hostClub && (
-                  <p className="mt-0.5 text-[13px] text-[#2E8B67]">
-                    Auto-accepted with your {hostClub.name} badge.
-                  </p>
-                )}
+            <div className="flex flex-col gap-3">
+              <div className="hf-pop flex items-start gap-3 rounded-md border border-success/40 bg-success-bg p-4">
+                <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-success text-white">
+                  <CheckIcon size={18} />
+                </span>
+                <div>
+                  <p className="text-[15px] font-bold text-[#2E8B67]">You&rsquo;re on the list.</p>
+                  {guestState === 'auto' && hostClub && (
+                    <p className="mt-0.5 text-[13px] text-[#2E8B67]">
+                      Auto-accepted with your {hostClub.name} badge.
+                    </p>
+                  )}
+                </div>
               </div>
+              <Button variant="secondary" size="sm" onClick={onWithdraw}>
+                Withdraw
+              </Button>
             </div>
           ) : guestState === 'pending' ? (
-            <div className="flex items-center gap-2.5 rounded-md border border-border bg-surface p-4 text-muted">
-              <PendingIcon size={18} className="shrink-0" />
-              <p className="text-[14px]">Request sent. Waiting on an admin.</p>
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center gap-2.5 rounded-md border border-border bg-surface p-4 text-muted">
+                <PendingIcon size={18} className="shrink-0" />
+                <p className="text-[14px]">Request sent. Waiting on an admin.</p>
+              </div>
+              <Button variant="secondary" size="sm" onClick={onWithdraw}>
+                Withdraw request
+              </Button>
             </div>
           ) : (
             <Button onClick={onApply}>Request to attend</Button>

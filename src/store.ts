@@ -231,6 +231,7 @@ export interface AppState {
   rsvp: (eventId: string) => ActionResult
   cancelRsvp: (eventId: string) => ActionResult
   applyToEvent: (eventId: string) => ApplyResult
+  withdrawApplication: (eventId: string) => ActionResult
   approveApplicant: (eventId: string, userId: string) => ActionResult
   denyApplicant: (eventId: string, userId: string) => ActionResult
   joinClub: (clubId: string) => void
@@ -534,6 +535,30 @@ export const useStore = create<AppState>()(
           }
         })
         return { ok: true, status }
+      },
+
+      // Withdraw your own guestlist application (whether pending or accepted).
+      withdrawApplication: (eventId) => {
+        const me = get().currentUser()
+        const ev = get().events.find((e) => e.id === eventId)
+        if (!ev) return { ok: false, reason: 'Event not found.' }
+        if (!ev.applicants.some((a) => a.userId === me.id) && !ev.attendeeIds.includes(me.id)) {
+          return { ok: false, reason: "You're not on this list." }
+        }
+        set((state) => ({
+          events: replaceById(state.events, eventId, (e) => ({
+            ...e,
+            applicants: e.applicants.filter((a) => a.userId !== me.id),
+            attendeeIds: e.attendeeIds.filter((id) => id !== me.id),
+            checkedInIds: (e.checkedInIds ?? []).filter((id) => id !== me.id),
+          })),
+          users: replaceById(state.users, me.id, (u) => ({
+            ...u,
+            applications: u.applications.filter((ap) => ap.eventId !== eventId),
+            rsvps: u.rsvps.filter((id) => id !== eventId),
+          })),
+        }))
+        return { ok: true }
       },
 
       approveApplicant: (eventId, userId) => {
