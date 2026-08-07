@@ -11,6 +11,7 @@ import Avatar, { AvatarStack } from '../components/ui/Avatar'
 import Fill from '../components/ui/Fill'
 import Button from '../components/ui/Button'
 import SectionHeader from '../components/ui/SectionHeader'
+import EventCard from '../components/ui/EventCard'
 import EmptyState from '../components/ui/EmptyState'
 import MiniMap from '../components/ui/MiniMap'
 import EditEventModal from '../components/ui/EditEventModal'
@@ -96,6 +97,17 @@ export default function EventDetail() {
   // People the viewer follows who are going.
   const myFollowing = store.followingByUser[me.id] ?? []
   const followedGoing = attendees.filter((u) => u.id !== me.id && myFollowing.includes(u.id))
+
+  // Other upcoming events by the same host (discovery).
+  const moreFromHost = store
+    .visibleEvents()
+    .filter(
+      (e) =>
+        e.id !== event.id &&
+        e.hostId === event.hostId &&
+        new Date(e.end).getTime() >= Date.now(),
+    )
+    .slice(0, 3)
 
   const hostClub =
     event.hostType === 'club' || event.hostType === 'eatingClub'
@@ -584,6 +596,18 @@ export default function EventDetail() {
               })}
             </ul>
           )}
+        </section>
+      )}
+
+      {/* More from this host */}
+      {moreFromHost.length > 0 && (
+        <section className="mt-8">
+          <SectionHeader title={`More from ${event.hostName}`} />
+          <div className="flex flex-col gap-3">
+            {moreFromHost.map((e) => (
+              <EventCard key={e.id} event={e} compact />
+            ))}
+          </div>
         </section>
       )}
 
