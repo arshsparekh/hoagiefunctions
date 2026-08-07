@@ -93,6 +93,10 @@ export default function EventDetail() {
     .map((aid) => userById.get(aid))
     .filter((u): u is User => Boolean(u))
 
+  // People the viewer follows who are going.
+  const myFollowing = store.followingByUser[me.id] ?? []
+  const followedGoing = attendees.filter((u) => u.id !== me.id && myFollowing.includes(u.id))
+
   const hostClub =
     event.hostType === 'club' || event.hostType === 'eatingClub'
       ? store.clubs.find((c) => c.id === event.hostId)
@@ -327,6 +331,18 @@ export default function EventDetail() {
               width: `${Math.min(100, Math.round((event.attendeeIds.length / event.capacity) * 100))}%`,
             }}
           />
+        </div>
+      )}
+
+      {/* People you follow who are going */}
+      {followedGoing.length > 0 && (
+        <div className="mt-3 flex items-center gap-2">
+          <AvatarStack users={followedGoing} max={5} size={22} />
+          <span className="text-[13px] font-medium text-pink-600">
+            {followedGoing.length === 1
+              ? `${followedGoing[0].name} is going`
+              : `${followedGoing.length} people you follow are going`}
+          </span>
         </div>
       )}
 

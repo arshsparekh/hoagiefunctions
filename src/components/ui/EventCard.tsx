@@ -26,6 +26,7 @@ export default function EventCard({
   const users = useStore((s) => s.users)
   const clubs = useStore((s) => s.clubs)
   const currentUser = useStore((s) => s.currentUser())
+  const followingByUser = useStore((s) => s.followingByUser)
 
   const userById = new Map(users.map((u) => [u.id, u]))
   const building = buildingById[event.buildingId]
@@ -34,6 +35,10 @@ export default function EventCard({
   const attendees = event.attendeeIds
     .map((id) => userById.get(id))
     .filter((u): u is User => Boolean(u))
+
+  // People the viewer follows who are going - a "your friends are here" signal.
+  const myFollowing = followingByUser[currentUser.id] ?? []
+  const followedGoing = attendees.filter((u) => u.id !== currentUser.id && myFollowing.includes(u.id))
 
   const hostClub =
     event.hostType === 'club' || event.hostType === 'eatingClub'
@@ -176,6 +181,12 @@ export default function EventCard({
             </div>
           )}
           <div className="ml-auto flex items-center gap-3">
+            {followedGoing.length > 0 && (
+              <span className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-pink-600">
+                <AvatarStack users={followedGoing} max={2} size={18} />
+                you follow
+              </span>
+            )}
             {fullChip}
             {event.reservationConfirmed && (
               <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-pink-600">
