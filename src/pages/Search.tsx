@@ -50,6 +50,21 @@ export default function Search() {
 
   const total = events.length + clubs.length + people.length
 
+  const clubItem = (c: Club) => (
+    <li key={c.id}>
+      <Link
+        to={`/club/${c.id}`}
+        className="flex items-center gap-3 rounded-md border border-border bg-white p-3 shadow-hoagie transition-colors hover:border-pink-300"
+      >
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[14px] font-semibold text-text">{c.name}</p>
+          <p className="truncate text-[12px] text-muted">{c.description}</p>
+        </div>
+        <Fill fill={c.colorFill}>{c.kind === 'eatingClub' ? 'Eating Club' : 'Club'}</Fill>
+      </Link>
+    </li>
+  )
+
   return (
     <div className="mx-auto max-w-2xl px-4 pt-5 sm:px-6">
       <div className="relative mb-5">
@@ -77,7 +92,15 @@ export default function Search() {
       </div>
 
       {query.length < 2 ? (
-        <p className="text-[13px] text-muted">Type at least two characters to search.</p>
+        <section>
+          <h2 className="mb-2 font-mono text-[11px] uppercase tracking-wider text-muted">
+            Browse clubs · {store.clubs.length}
+          </h2>
+          <ul className="flex flex-col gap-2">{store.clubs.map(clubItem)}</ul>
+          <p className="mt-4 text-[13px] text-muted">
+            Search by name to find events and people too.
+          </p>
+        </section>
       ) : total === 0 ? (
         <EmptyState
           icon={<SearchIcon size={26} />}
@@ -114,24 +137,7 @@ export default function Search() {
               <h2 className="mb-2 font-mono text-[11px] uppercase tracking-wider text-muted">
                 Clubs · {clubs.length}
               </h2>
-              <ul className="flex flex-col gap-2">
-                {clubs.map((c) => (
-                  <li key={c.id}>
-                    <Link
-                      to={`/club/${c.id}`}
-                      className="flex items-center gap-3 rounded-md border border-border bg-white p-3 shadow-hoagie transition-colors hover:border-pink-300"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-[14px] font-semibold text-text">{c.name}</p>
-                        <p className="truncate text-[12px] text-muted">{c.description}</p>
-                      </div>
-                      <Fill fill={c.colorFill}>
-                        {c.kind === 'eatingClub' ? 'Eating Club' : 'Club'}
-                      </Fill>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
+              <ul className="flex flex-col gap-2">{clubs.map(clubItem)}</ul>
             </section>
           )}
 
