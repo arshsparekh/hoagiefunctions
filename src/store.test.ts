@@ -374,6 +374,20 @@ describe('per-user follows and saves are isolated by viewer', () => {
     expect(s().isFollowing('cannon')).toBe(false)
   })
 
+  it('recommends events where someone you follow is going', () => {
+    const created = s().createEvent(arshEvent({ tags: [] })) // no tags -> no affinity match
+    if (!created.ok) throw new Error('setup failed')
+    const id = created.event.id
+    // Put a non-followed user on the guest list (via a raw state patch, no self-rsvp).
+    useStore.setState((st) => ({
+      events: st.events.map((e) => (e.id === id ? { ...e, attendeeIds: ['u-maya'] } : e)),
+    }))
+
+    expect(s().recommendedEvents().some((e) => e.id === id)).toBe(false)
+    s().toggleFollow('u-maya')
+    expect(s().recommendedEvents().some((e) => e.id === id)).toBe(true)
+  })
+
   it('saves events per user and lists them', () => {
     const anyEvent = s().visibleEvents()[0]
     s().toggleSave(anyEvent.id)

@@ -164,7 +164,7 @@ export default function Home() {
         <>
           <Feed
             title="Recommended for you"
-            subtitle="Based on your clubs and RSVPs"
+            subtitle="From your clubs, RSVPs, and people you follow"
             events={recommended}
           />
           {groups.map((g) => (

@@ -324,6 +324,16 @@ function affinityTags(me: User, events: CampusEvent[]): Set<string> {
 const matchesAffinity = (ev: CampusEvent, affinity: Set<string>): boolean =>
   ev.tags.some((t) => affinity.has(t))
 
+/**
+ * "For You" relevance: an event matches your tag affinity, OR someone you follow
+ * is going. This is what pulls the follow graph into the feed (not just notifs).
+ */
+const isRecommended = (
+  ev: CampusEvent,
+  affinity: Set<string>,
+  following: Set<string>,
+): boolean => matchesAffinity(ev, affinity) || ev.attendeeIds.some((id) => following.has(id))
+
 /** Everyone who follows `targetId` (a club or user), for fan-out notifications. */
 function followersOf(followingByUser: Record<string, string[]>, targetId: string): string[] {
   const out: string[] = []
@@ -392,16 +402,20 @@ export const useStore = create<AppState>()(
 
       recommendedEvents: () => {
         const byStart = get().visibleEvents()
-        const affinity = affinityTags(get().currentUser(), byStart)
-        return byStart.filter((ev) => matchesAffinity(ev, affinity))
+        const me = get().currentUser()
+        const affinity = affinityTags(me, byStart)
+        const following = new Set(get().followingByUser[me.id] ?? [])
+        return byStart.filter((ev) => isRecommended(ev, affinity, following))
       },
 
       eventsForUser: () => {
         const byStart = get().visibleEvents()
-        const affinity = affinityTags(get().currentUser(), byStart)
+        const me = get().currentUser()
+        const affinity = affinityTags(me, byStart)
+        const following = new Set(get().followingByUser[me.id] ?? [])
         return [
-          ...byStart.filter((ev) => matchesAffinity(ev, affinity)),
-          ...byStart.filter((ev) => !matchesAffinity(ev, affinity)),
+          ...byStart.filter((ev) => isRecommended(ev, affinity, following)),
+          ...byStart.filter((ev) => !isRecommended(ev, affinity, following)),
         ]
       },
 
