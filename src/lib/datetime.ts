@@ -47,6 +47,27 @@ export function formatEventDateTime(startISO: string, endISO: string): EventTime
   return { dateLabel, timeLabel, crossesMidnight }
 }
 
+/**
+ * A short "when" chip for an event relative to now: "Ended", "Happening now",
+ * "Starts soon", "In 5h", "Tomorrow", or "In 3 days". `now` is injectable.
+ */
+export function timeUntil(startISO: string, endISO: string, now: Date = new Date()): string {
+  const start = new Date(startISO)
+  const end = new Date(endISO)
+  const nowMs = now.getTime()
+  if (nowMs >= end.getTime()) return 'Ended'
+  if (nowMs >= start.getTime()) return 'Happening now'
+
+  const hours = (start.getTime() - nowMs) / 3_600_000
+  if (hours < 1) return 'Starts soon'
+  if (hours < 24) return `In ${Math.round(hours)}h`
+
+  const startMid = new Date(start.getFullYear(), start.getMonth(), start.getDate()).getTime()
+  const nowMid = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+  const days = Math.round((startMid - nowMid) / 86_400_000)
+  return days === 1 ? 'Tomorrow' : `In ${days} days`
+}
+
 export type EventBucket = 'today' | 'week' | 'upcoming'
 
 /** Which feed section an event belongs to, by its start date relative to `now`. */

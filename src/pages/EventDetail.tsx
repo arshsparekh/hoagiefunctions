@@ -3,7 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useStore, buildingById } from '../store'
 import { useToasts } from '../lib/toast'
 import type { User } from '../data/seed'
-import { formatEventDateTime } from '../lib/datetime'
+import { formatEventDateTime, timeUntil } from '../lib/datetime'
 import AccessTypePill from '../components/ui/AccessTypePill'
 import ClubBadge from '../components/ui/ClubBadge'
 import TagChip from '../components/ui/TagChip'
@@ -282,6 +282,9 @@ export default function EventDetail() {
         <span className="inline-flex items-center gap-1.5">
           <ClockIcon size={16} className="shrink-0 text-muted" />
           {timeLabel}
+        </span>
+        <span className="inline-flex items-center rounded-sm bg-pink-50 px-2 py-0.5 text-[12px] font-semibold text-pink-600">
+          {timeUntil(event.start, event.end)}
         </span>
       </div>
 
