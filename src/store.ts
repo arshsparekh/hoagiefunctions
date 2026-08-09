@@ -877,11 +877,50 @@ export const useStore = create<AppState>()(
         if (blocking)
           return { ok: false, reason: errs.title ?? errs.time ?? errs.capacity ?? errs.description }
 
+        // Re-check the reservation lock on edit (createEvent does this too) so an
+        // edit can't double-book a room another confirmed reservation holds.
+        if (merged.reservationConfirmed && (timeChanged || clean.reservationConfirmed === true)) {
+          const conflict = get().events.find(
+            (e) =>
+              e.id !== eventId &&
+              e.buildingId === merged.buildingId &&
+              e.reservationConfirmed &&
+              overlaps(merged.start, merged.end, e.start, e.end),
+          )
+          if (conflict) {
+            return { ok: false, reason: `That space is reserved for ${conflict.title} then.` }
+          }
+        }
+
         set((state) => {
-          const notifs = timeChanged
-            ? state.events
-                .find((e) => e.id === eventId)!
-                .attendeeIds.filter((uid) => uid !== me.id)
+          const promotedNotifs: AppNotification[] = []
+          const events = replaceById(state.events, eventId, (e) => {
+            const next = { ...e, ...clean }
+            let attendeeIds = next.attendeeIds
+            let waitlistIds = next.waitlistIds ?? []
+            // Raising capacity pulls people off the waitlist into the new seats.
+            while (
+              next.capacity !== undefined &&
+              waitlistIds.length > 0 &&
+              attendeeIds.length < next.capacity
+            ) {
+              const promoted = waitlistIds[0]
+              waitlistIds = waitlistIds.slice(1)
+              attendeeIds = [...attendeeIds, promoted]
+              promotedNotifs.push(
+                makeNotif(promoted, 'promotedFromWaitlist', {
+                  title: 'A spot opened up',
+                  body: `You're off the waitlist for ${next.title}.`,
+                  eventId,
+                }),
+              )
+            }
+            return { ...next, attendeeIds, waitlistIds }
+          })
+
+          const timeNotifs = timeChanged
+            ? ev.attendeeIds
+                .filter((uid) => uid !== me.id)
                 .map((uid) =>
                   makeNotif(uid, 'eventUpdated', {
                     title: 'Time changed',
@@ -890,9 +929,21 @@ export const useStore = create<AppState>()(
                   }),
                 )
             : []
+
+          // Keep promoted users' own rsvps in sync.
+          const promotedIds = promotedNotifs.map((n) => n.userId)
+          const users = promotedIds.length
+            ? state.users.map((u) =>
+                promotedIds.includes(u.id) && !u.rsvps.includes(eventId)
+                  ? { ...u, rsvps: [...u.rsvps, eventId] }
+                  : u,
+              )
+            : state.users
+
           return {
-            events: replaceById(state.events, eventId, (e) => ({ ...e, ...clean })),
-            notifications: [...state.notifications, ...notifs],
+            events,
+            users,
+            notifications: [...state.notifications, ...timeNotifs, ...promotedNotifs],
           }
         })
         return { ok: true }

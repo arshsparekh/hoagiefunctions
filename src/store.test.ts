@@ -197,6 +197,41 @@ describe('updateEvent time handling', () => {
     const newEnd = new Date(Date.now() - 2 * 86_400_000 + 2 * 3_600_000).toISOString()
     expect(s().updateEvent('ev-past-test', { start: newStart, end: newEnd }).ok).toBe(false)
   })
+
+  it('rejects an edit that double-books a reserved room', () => {
+    const w48 = futureWindow(48)
+    const w72 = futureWindow(72)
+    const a = s().createEvent(
+      arshEvent({ reservationConfirmed: true, buildingId: 'b-frist', start: w48.start, end: w48.end }),
+    )
+    const b = s().createEvent(
+      arshEvent({ reservationConfirmed: true, buildingId: 'b-frist', start: w72.start, end: w72.end }),
+    )
+    if (!a.ok || !b.ok) throw new Error('setup failed')
+    // Move B onto A's slot -> double-booking is refused.
+    const r = s().updateEvent(b.event.id, { start: w48.start, end: w48.end })
+    expect(r.ok).toBe(false)
+  })
+
+  it('promotes waitlisters when capacity is raised', () => {
+    const created = s().createEvent(arshEvent({ capacity: 1 }))
+    if (!created.ok) throw new Error('setup failed')
+    const id = created.event.id
+    s().rsvp(id) // arsh takes the single seat
+    s().setViewAs('newStudent')
+    s().rsvp(id) // guest waitlisted
+    expect(s().events.find((e) => e.id === id)!.waitlistIds).toContain('u-guest')
+
+    s().setViewAs('me')
+    s().updateEvent(id, { capacity: 2 })
+    const ev = s().events.find((e) => e.id === id)!
+    expect(ev.attendeeIds).toContain('u-guest')
+    expect(ev.waitlistIds).not.toContain('u-guest')
+    expect(s().users.find((u) => u.id === 'u-guest')!.rsvps).toContain(id)
+    expect(
+      s().notifications.some((n) => n.userId === 'u-guest' && n.kind === 'promotedFromWaitlist'),
+    ).toBe(true)
+  })
 })
 
 describe('deleteEvent', () => {
