@@ -66,7 +66,7 @@ Neutrals & semantic:
 |---|---|---|
 | `canvas` | `#FBE7F0` | **light-pink page background** (body + AppShell) |
 | `text` | `#343434` | primary text (default body color) |
-| `muted` | `#808080` | secondary / muted text |
+| `muted` | `#767676` | secondary / muted text (AA-compliant on white) |
 | `border` | `#EEEEEE` | default borders, dividers |
 | `border-muted` | `#F1F1F1` | subtle borders |
 | `surface` | `#F7F7F7` | subtle background fills |

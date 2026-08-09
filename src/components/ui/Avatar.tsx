@@ -7,6 +7,17 @@ function initials(name: string): string {
   return chars.toUpperCase() || '?'
 }
 
+/** Pick readable initials color: dark text on light avatar colors, white on dark. */
+function initialsColor(hex: string): string {
+  const h = hex.replace('#', '')
+  if (h.length < 6) return '#ffffff'
+  const r = parseInt(h.slice(0, 2), 16)
+  const g = parseInt(h.slice(2, 4), 16)
+  const b = parseInt(h.slice(4, 6), 16)
+  // Perceived brightness (ITU-R BT.601). Light backgrounds get dark text.
+  return 0.299 * r + 0.587 * g + 0.114 * b > 150 ? '#1a1a2e' : '#ffffff'
+}
+
 /** Initials on a circle filled with the user's avatarColor. */
 export default function Avatar({
   user,
@@ -21,8 +32,14 @@ export default function Avatar({
   return (
     <span
       title={user.name}
-      style={{ backgroundColor: user.avatarColor, width: size, height: size, fontSize: size * 0.4 }}
-      className={`inline-flex shrink-0 items-center justify-center rounded-full font-semibold leading-none text-white ${
+      style={{
+        backgroundColor: user.avatarColor,
+        color: initialsColor(user.avatarColor),
+        width: size,
+        height: size,
+        fontSize: size * 0.4,
+      }}
+      className={`inline-flex shrink-0 items-center justify-center rounded-full font-semibold leading-none ${
         ring ? 'ring-2 ring-white' : ''
       }`}
     >

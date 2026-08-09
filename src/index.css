@@ -24,7 +24,7 @@
 
   /* Neutrals */
   --color-text: #343434;
-  --color-muted: #808080;
+  --color-muted: #767676; /* AA-compliant on white (4.5:1); ~imperceptibly darker than #808080 */
   --color-border: #eeeeee;
   --color-border-muted: #f1f1f1;
   --color-surface: #f7f7f7;
