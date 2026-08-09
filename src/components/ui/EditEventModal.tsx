@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from 'react'
 import { useStore, tags, buildingById } from '../../store'
 import { useDialog } from '../../lib/useDialog'
 import { useToasts } from '../../lib/toast'
-import type { AccessType, CampusEvent } from '../../data/seed'
+import type { AccessType, CampusEvent, EventAudience } from '../../data/seed'
 import AccessTypePill from './AccessTypePill'
 import TagChip from './TagChip'
 import Button from './Button'
@@ -17,7 +17,14 @@ const pad = (n: number) => String(n).padStart(2, '0')
 /** Host/admin edit of an event's details. */
 export default function EditEventModal({ event, onClose }: { event: CampusEvent; onClose: () => void }) {
   const updateEvent = useStore((s) => s.updateEvent)
+  const users = useStore((s) => s.users)
+  const clubs = useStore((s) => s.clubs)
   const push = useToasts((s) => s.push)
+
+  const hostClub =
+    event.hostType !== 'individual' ? clubs.find((c) => c.id === event.hostId) : undefined
+  const userById = new Map(users.map((u) => [u.id, u]))
+  const initialAudience = event.audience ?? { kind: 'everyone' as const }
 
   const s = new Date(event.start)
   const e = new Date(event.end)
@@ -41,6 +48,12 @@ export default function EditEventModal({ event, onClose }: { event: CampusEvent;
   }, [event.buildingId])
   const [selectedTags, setSelectedTags] = useState<string[]>(event.tags)
   const [hasReservation, setHasReservation] = useState(event.reservationConfirmed)
+  const [audienceKind, setAudienceKind] = useState<'everyone' | 'club' | 'people'>(
+    initialAudience.kind,
+  )
+  const [invitees, setInvitees] = useState<string[]>(
+    initialAudience.kind === 'people' ? initialAudience.userIds : [],
+  )
 
   const dialogRef = useRef<HTMLFormElement>(null)
   const titleInputRef = useRef<HTMLInputElement>(null)
@@ -57,6 +70,17 @@ export default function EditEventModal({ event, onClose }: { event: CampusEvent;
     const start = new Date(`${date}T${startTime}`)
     let end = new Date(`${date}T${endTime}`)
     if (end.getTime() <= start.getTime()) end = new Date(end.getTime() + 86_400_000)
+
+    let audience: EventAudience
+    if (audienceKind === 'club' && hostClub) audience = { kind: 'club', clubId: hostClub.id }
+    else if (audienceKind === 'people') {
+      if (invitees.length === 0) {
+        push('Add at least one person, or choose Everyone.', 'danger')
+        return
+      }
+      audience = { kind: 'people', userIds: invitees }
+    } else audience = { kind: 'everyone' }
+
     const r = updateEvent(event.id, {
       title: title.trim(),
       description: description.trim(),
@@ -64,6 +88,7 @@ export default function EditEventModal({ event, onClose }: { event: CampusEvent;
       end: end.toISOString(),
       buildingId,
       accessType,
+      audience,
       tags: selectedTags,
       reservationConfirmed: hasReservation,
       capacity: capacity.trim() ? Number(capacity) : undefined,
@@ -177,6 +202,87 @@ export default function EditEventModal({ event, onClose }: { event: CampusEvent;
           onChange={(e) => setCapacity(e.target.value)}
           placeholder="No limit"
         />
+
+        <span className={`${labelCls} mt-4`}>Who can see this?</span>
+        <div className="flex flex-col gap-1">
+          <label className="flex cursor-pointer items-center gap-2.5 rounded-md p-2 transition-colors hover:bg-surface has-[:checked]:bg-pink-50">
+            <input
+              type="radio"
+              name="edit-audience"
+              className="accent-pink-500"
+              checked={audienceKind === 'everyone'}
+              onChange={() => setAudienceKind('everyone')}
+            />
+            <span className="text-[14px] text-text">Everyone</span>
+          </label>
+          {hostClub && (
+            <label className="flex cursor-pointer items-center gap-2.5 rounded-md p-2 transition-colors hover:bg-surface has-[:checked]:bg-pink-50">
+              <input
+                type="radio"
+                name="edit-audience"
+                className="accent-pink-500"
+                checked={audienceKind === 'club'}
+                onChange={() => setAudienceKind('club')}
+              />
+              <span className="text-[14px] text-text">{hostClub.name} members only</span>
+            </label>
+          )}
+          <label className="flex cursor-pointer items-center gap-2.5 rounded-md p-2 transition-colors hover:bg-surface has-[:checked]:bg-pink-50">
+            <input
+              type="radio"
+              name="edit-audience"
+              className="accent-pink-500"
+              checked={audienceKind === 'people'}
+              onChange={() => setAudienceKind('people')}
+            />
+            <span className="text-[14px] text-text">Specific people</span>
+          </label>
+        </div>
+        {audienceKind === 'people' && (
+          <div className="mt-2">
+            {invitees.length > 0 && (
+              <div className="mb-2 flex flex-wrap gap-1.5">
+                {invitees.map((uid) => {
+                  const u = userById.get(uid)
+                  if (!u) return null
+                  return (
+                    <span
+                      key={uid}
+                      className="inline-flex items-center gap-1.5 rounded-sm bg-pink-50 py-1 pl-2 pr-1.5 text-[13px] font-medium text-pink-700"
+                    >
+                      {u.name}
+                      <button
+                        type="button"
+                        aria-label={`Remove ${u.name}`}
+                        onClick={() => setInvitees((list) => list.filter((x) => x !== uid))}
+                        className="text-pink-400 transition-colors hover:text-pink-700"
+                      >
+                        <XIcon size={13} />
+                      </button>
+                    </span>
+                  )
+                })}
+              </div>
+            )}
+            <select
+              className={inputCls}
+              value=""
+              onChange={(e) => {
+                const id = e.target.value
+                if (id) setInvitees((list) => (list.includes(id) ? list : [...list, id]))
+              }}
+            >
+              <option value="">Add a person…</option>
+              {users
+                .filter((u) => u.id !== 'u-guest' && !invitees.includes(u.id))
+                .map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.name}
+                  </option>
+                ))}
+            </select>
+          </div>
+        )}
 
         <span className={`${labelCls} mt-4`}>Tags</span>
         <div className="flex flex-wrap gap-2">

@@ -64,6 +64,7 @@ export default function Create() {
   const locRef = useRef<HTMLDivElement>(null)
 
   const [accessType, setAccessType] = useState<AccessType>('open')
+  const [capacity, setCapacity] = useState('')
   const [selectedTags, setSelectedTags] = useState<string[]>([])
   const [hasReservation, setHasReservation] = useState(false)
 
@@ -191,6 +192,7 @@ export default function Create() {
       audience,
       tags: selectedTags,
       reservationConfirmed: hasReservation,
+      capacity: capacity.trim() ? Number(capacity) : undefined,
     })
 
     if (!result.ok) {
@@ -324,6 +326,10 @@ export default function Create() {
                 className={`${inputCls} pl-9`}
                 value={locQuery}
                 autoComplete="off"
+                role="combobox"
+                aria-expanded={showSuggest && !!locQuery.trim()}
+                aria-controls="loc-listbox"
+                aria-autocomplete="list"
                 onFocus={() => setShowSuggest(true)}
                 onChange={(e) => {
                   setLocQuery(e.target.value)
@@ -336,11 +342,18 @@ export default function Create() {
               />
             </div>
             {showSuggest && locQuery.trim() && (
-              <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-md border border-border bg-white p-1 shadow-hoagie">
+              <div
+                id="loc-listbox"
+                role="listbox"
+                aria-label="Location suggestions"
+                className="absolute z-20 mt-1 w-full overflow-hidden rounded-md border border-border bg-white p-1 shadow-hoagie"
+              >
                 {suggestions.map((b) => (
                   <button
                     key={b.id}
                     type="button"
+                    role="option"
+                    aria-selected={buildingId === b.id}
                     onClick={() => {
                       setBuildingId(b.id)
                       setLocQuery(b.name)
@@ -355,6 +368,8 @@ export default function Create() {
                 ))}
                 <button
                   type="button"
+                  role="option"
+                  aria-selected={false}
                   onClick={() => {
                     setIsCustom(true)
                     setBuildingId(null)
@@ -415,6 +430,23 @@ export default function Create() {
               auto-accepted.
             </p>
           )}
+
+          <label className={`${labelCls} mt-4`} htmlFor="capacity">
+            Capacity (optional)
+          </label>
+          <input
+            id="capacity"
+            type="number"
+            min={1}
+            inputMode="numeric"
+            className={inputCls}
+            value={capacity}
+            onChange={(e) => setCapacity(e.target.value)}
+            placeholder="No limit"
+          />
+          <p className="mt-1.5 text-[12px] text-muted">
+            When it fills, new RSVPs join a waitlist and get promoted as spots open.
+          </p>
         </section>
 
         {/* Audience - who can see the post */}
@@ -503,6 +535,10 @@ export default function Create() {
                 className={inputCls}
                 value={inviteQuery}
                 autoComplete="off"
+                role="combobox"
+                aria-expanded={showInvite && inviteResults.length > 0}
+                aria-controls="invite-listbox"
+                aria-autocomplete="list"
                 onFocus={() => setShowInvite(true)}
                 onChange={(e) => {
                   setInviteQuery(e.target.value)
@@ -511,11 +547,18 @@ export default function Create() {
                 placeholder="Add people by name…"
               />
               {showInvite && inviteResults.length > 0 && (
-                <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-md border border-border bg-white p-1 shadow-hoagie">
+                <div
+                  id="invite-listbox"
+                  role="listbox"
+                  aria-label="People"
+                  className="absolute z-20 mt-1 w-full overflow-hidden rounded-md border border-border bg-white p-1 shadow-hoagie"
+                >
                   {inviteResults.map((u) => (
                     <button
                       key={u.id}
                       type="button"
+                      role="option"
+                      aria-selected={false}
                       onClick={() => {
                         setInvitees((s) => [...s, u.id])
                         setInviteQuery('')

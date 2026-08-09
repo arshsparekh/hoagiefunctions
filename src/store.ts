@@ -217,6 +217,7 @@ export type EventEdit = Partial<
     | 'end'
     | 'buildingId'
     | 'accessType'
+    | 'audience'
     | 'tags'
     | 'reservationConfirmed'
     | 'capacity'
