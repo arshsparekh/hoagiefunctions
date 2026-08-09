@@ -215,6 +215,7 @@ export type EventEdit = Partial<
     | 'description'
     | 'start'
     | 'end'
+    | 'buildingId'
     | 'accessType'
     | 'tags'
     | 'reservationConfirmed'
@@ -870,6 +871,7 @@ export const useStore = create<AppState>()(
         const timeChanged =
           (clean.start !== undefined && clean.start !== ev.start) ||
           (clean.end !== undefined && clean.end !== ev.end)
+        const locationChanged = clean.buildingId !== undefined && clean.buildingId !== ev.buildingId
         const relevant = (['title', 'description', 'capacity'] as const).filter(
           (k) => clean[k] !== undefined,
         )
@@ -879,7 +881,10 @@ export const useStore = create<AppState>()(
 
         // Re-check the reservation lock on edit (createEvent does this too) so an
         // edit can't double-book a room another confirmed reservation holds.
-        if (merged.reservationConfirmed && (timeChanged || clean.reservationConfirmed === true)) {
+        if (
+          merged.reservationConfirmed &&
+          (timeChanged || locationChanged || clean.reservationConfirmed === true)
+        ) {
           const conflict = get().events.find(
             (e) =>
               e.id !== eventId &&
@@ -918,17 +923,20 @@ export const useStore = create<AppState>()(
             return { ...next, attendeeIds, waitlistIds }
           })
 
-          const timeNotifs = timeChanged
-            ? ev.attendeeIds
-                .filter((uid) => uid !== me.id)
-                .map((uid) =>
-                  makeNotif(uid, 'eventUpdated', {
-                    title: 'Time changed',
-                    body: `${merged.title} was rescheduled.`,
-                    eventId,
-                  }),
-                )
-            : []
+          const timeNotifs =
+            timeChanged || locationChanged
+              ? ev.attendeeIds
+                  .filter((uid) => uid !== me.id)
+                  .map((uid) =>
+                    makeNotif(uid, 'eventUpdated', {
+                      title: timeChanged ? 'Time changed' : 'Location changed',
+                      body: timeChanged
+                        ? `${merged.title} was rescheduled.`
+                        : `${merged.title} moved to ${buildingById[merged.buildingId]?.name ?? 'a new spot'}.`,
+                      eventId,
+                    }),
+                  )
+              : []
 
           // Keep promoted users' own rsvps in sync.
           const promotedIds = promotedNotifs.map((n) => n.userId)

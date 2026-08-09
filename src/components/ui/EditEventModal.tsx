@@ -1,5 +1,5 @@
-import { useRef, useState } from 'react'
-import { useStore, tags } from '../../store'
+import { useMemo, useRef, useState } from 'react'
+import { useStore, tags, buildingById } from '../../store'
 import { useDialog } from '../../lib/useDialog'
 import { useToasts } from '../../lib/toast'
 import type { AccessType, CampusEvent } from '../../data/seed'
@@ -26,8 +26,19 @@ export default function EditEventModal({ event, onClose }: { event: CampusEvent;
   const [date, setDate] = useState(`${s.getFullYear()}-${pad(s.getMonth() + 1)}-${pad(s.getDate())}`)
   const [startTime, setStartTime] = useState(`${pad(s.getHours())}:${pad(s.getMinutes())}`)
   const [endTime, setEndTime] = useState(`${pad(e.getHours())}:${pad(e.getMinutes())}`)
+  const [buildingId, setBuildingId] = useState(event.buildingId)
   const [accessType, setAccessType] = useState<AccessType>(event.accessType)
   const [capacity, setCapacity] = useState(event.capacity ? String(event.capacity) : '')
+
+  // Known locations to pick from (static campus buildings + any ad-hoc ones),
+  // always including the event's current building so it stays selectable.
+  const locationOptions = useMemo(() => {
+    const all = Object.values(buildingById)
+    if (!all.some((b) => b.id === event.buildingId) && buildingById[event.buildingId]) {
+      all.push(buildingById[event.buildingId])
+    }
+    return [...all].sort((a, b) => a.name.localeCompare(b.name))
+  }, [event.buildingId])
   const [selectedTags, setSelectedTags] = useState<string[]>(event.tags)
   const [hasReservation, setHasReservation] = useState(event.reservationConfirmed)
 
@@ -51,6 +62,7 @@ export default function EditEventModal({ event, onClose }: { event: CampusEvent;
       description: description.trim(),
       start: start.toISOString(),
       end: end.toISOString(),
+      buildingId,
       accessType,
       tags: selectedTags,
       reservationConfirmed: hasReservation,
@@ -121,6 +133,22 @@ export default function EditEventModal({ event, onClose }: { event: CampusEvent;
             <input type="time" className={inputCls} value={endTime} onChange={(e) => setEndTime(e.target.value)} />
           </div>
         </div>
+
+        <label className={`${labelCls} mt-4`} htmlFor="edit-location">
+          Location
+        </label>
+        <select
+          id="edit-location"
+          className={inputCls}
+          value={buildingId}
+          onChange={(e) => setBuildingId(e.target.value)}
+        >
+          {locationOptions.map((b) => (
+            <option key={b.id} value={b.id}>
+              {b.name}
+            </option>
+          ))}
+        </select>
 
         <label className={`${labelCls} mt-4`}>Who can come?</label>
         <div className="grid grid-cols-3 gap-2">
