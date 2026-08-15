@@ -5,6 +5,32 @@ import type { CampusEvent } from './data/seed'
 
 const s = () => useStore.getState()
 
+// The new model has no viewAs; act as a user by setting the session directly.
+const signInAs = (userId: string) => useStore.setState({ sessionUserId: userId })
+
+// A no-clubs "outsider" (replaces the old demo guest) for outsider/visibility tests.
+const OUTSIDER_ID = 'u-outsider'
+const ensureOutsider = () =>
+  useStore.setState((st) =>
+    st.users.some((u) => u.id === OUTSIDER_ID)
+      ? {}
+      : {
+          users: [
+            ...st.users,
+            {
+              id: OUTSIDER_ID,
+              name: 'Outsider Student',
+              classYear: 2030 as const,
+              avatarColor: '#666666',
+              clubMemberships: [],
+              adminOf: [],
+              rsvps: [],
+              applications: [],
+            },
+          ],
+        },
+  )
+
 // A valid future window (validation rejects past starts / >24h spans).
 const futureWindow = (hoursOut = 48) => {
   const start = new Date(Date.now() + hoursOut * 3_600_000)
@@ -27,8 +53,48 @@ const arshEvent = (over: Partial<CreateEventInput> = {}): CreateEventInput => ({
 })
 
 beforeEach(() => {
-  s().resetDemo() // viewAs === 'me' (u-arsh) after reset
-  s().markAllNotificationsRead() // clear seeded notifications for a clean baseline
+  s().resetWorld()
+  ensureOutsider()
+  signInAs('u-arsh') // default actor is Arsh (an eating-club member + Hoagie Club admin)
+})
+
+describe('accounts (sign up / sign in)', () => {
+  it('signs up a new user with auto-generated club credentials and persists', () => {
+    s().signOut()
+    expect(s().isSignedIn()).toBe(false)
+
+    const r = s().signUp({ firstName: 'Casey', lastName: 'Nguyen', classYear: 2028, email: 'cn@princeton.edu' })
+    expect(r.ok).toBe(true)
+    expect(s().isSignedIn()).toBe(true)
+
+    const me = s().currentUser()
+    expect(me.name).toBe('Casey Nguyen')
+    expect(me.classYear).toBe(2028)
+    expect(me.eatingClubId).toBeTruthy()
+    expect(me.adminOf.length).toBe(1) // runs exactly one club
+    // The club rosters were updated too (they're an admin + member there).
+    const adminClub = s().clubs.find((c) => c.id === me.adminOf[0])!
+    expect(adminClub.adminIds).toContain(me.id)
+    expect(adminClub.memberIds).toContain(me.id)
+  })
+
+  it('lets a returning user sign back in with just their email', () => {
+    s().signUp({ firstName: 'Dana', lastName: 'Ruiz', classYear: 2027, email: 'dr@princeton.edu' })
+    const id = s().currentUser().id
+    s().signOut()
+    expect(s().isSignedIn()).toBe(false)
+
+    const r = s().signIn('DR@princeton.edu') // case-insensitive
+    expect(r.ok).toBe(true)
+    expect(s().currentUser().id).toBe(id)
+  })
+
+  it('rejects sign-in for an unknown email and duplicate sign-up', () => {
+    expect(s().signIn('nobody@princeton.edu').ok).toBe(false)
+    s().signUp({ firstName: 'Eli', lastName: 'Park', classYear: 2029, email: 'ep@princeton.edu' })
+    const dup = s().signUp({ firstName: 'Eli', lastName: 'Park', classYear: 2029, email: 'ep@princeton.edu' })
+    expect(dup.ok).toBe(false)
+  })
 })
 
 describe('rsvp / cancel', () => {
@@ -53,12 +119,12 @@ describe('rsvp / cancel', () => {
     )
     if (!created.ok) throw new Error('setup failed')
 
-    s().setViewAs('newStudent')
+    signInAs(OUTSIDER_ID)
     expect(s().applyToEvent(created.event.id).ok).toBe(true) // pending
     expect(s().withdrawApplication(created.event.id).ok).toBe(true)
 
     const ev = s().events.find((e) => e.id === created.event.id)!
-    expect(ev.applicants.some((a) => a.userId === 'u-guest')).toBe(false)
+    expect(ev.applicants.some((a) => a.userId === OUTSIDER_ID)).toBe(false)
     expect(s().currentUser().applications.some((a) => a.eventId === created.event.id)).toBe(false)
   })
 
@@ -67,7 +133,7 @@ describe('rsvp / cancel', () => {
       arshEvent({ audience: { kind: 'people', userIds: ['u-maya'] } }),
     )
     if (!created.ok) throw new Error('setup failed')
-    s().setViewAs('newStudent')
+    signInAs(OUTSIDER_ID)
     const r = s().rsvp(created.event.id)
     expect(r.ok).toBe(false)
     expect(r.reason).toMatch(/private/i)
@@ -84,20 +150,20 @@ describe('capacity waitlist + promotion', () => {
     expect(s().rsvp(id).ok).toBe(true)
 
     // Guest tries -> waitlisted.
-    s().setViewAs('newStudent')
+    signInAs(OUTSIDER_ID)
     const guestTry = s().rsvp(id)
     expect(guestTry.ok).toBe(false)
     expect(guestTry.waitlisted).toBe(true)
-    expect(s().events.find((e) => e.id === id)!.waitlistIds).toContain('u-guest')
+    expect(s().events.find((e) => e.id === id)!.waitlistIds).toContain(OUTSIDER_ID)
 
     // Arsh cancels -> guest is promoted and notified.
-    s().setViewAs('me')
+    signInAs('u-arsh')
     s().cancelRsvp(id)
     const ev = s().events.find((e) => e.id === id)!
-    expect(ev.attendeeIds).toContain('u-guest')
-    expect(ev.waitlistIds).not.toContain('u-guest')
+    expect(ev.attendeeIds).toContain(OUTSIDER_ID)
+    expect(ev.waitlistIds).not.toContain(OUTSIDER_ID)
 
-    s().setViewAs('newStudent')
+    signInAs(OUTSIDER_ID)
     expect(s().currentUser().rsvps).toContain(id)
     expect(s().unreadCount()).toBeGreaterThanOrEqual(1)
     expect(s().myNotifications()[0].kind).toBe('promotedFromWaitlist')
@@ -110,7 +176,7 @@ describe('authorization guards (defense in depth)', () => {
     if (!created.ok) throw new Error('setup failed')
     const id = created.event.id
 
-    s().setViewAs('newStudent') // guest manages nothing
+    signInAs(OUTSIDER_ID) // guest manages nothing
     expect(s().updateEvent(id, { title: 'Hijacked' }).ok).toBe(false)
     expect(s().toggleCheckIn(id, 'u-arsh').ok).toBe(false)
     expect(s().approveApplicant(id, 'u-arsh').ok).toBe(false)
@@ -124,17 +190,17 @@ describe('authorization guards (defense in depth)', () => {
     const created = s().createEvent(arshEvent({ accessType: 'guestlist' }))
     if (!created.ok) throw new Error('setup failed')
 
-    s().setViewAs('newStudent')
+    signInAs(OUTSIDER_ID)
     s().applyToEvent(created.event.id) // guest has no badge -> pending
 
-    s().setViewAs('me') // arsh is the individual host (not a club admin)
-    const r = s().approveApplicant(created.event.id, 'u-guest')
+    signInAs('u-arsh') // arsh is the individual host (not a club admin)
+    const r = s().approveApplicant(created.event.id, OUTSIDER_ID)
     expect(r.ok).toBe(true)
-    expect(s().events.find((e) => e.id === created.event.id)!.attendeeIds).toContain('u-guest')
+    expect(s().events.find((e) => e.id === created.event.id)!.attendeeIds).toContain(OUTSIDER_ID)
   })
 
   it('rejects posting as a club you do not admin, or as another person', () => {
-    s().setViewAs('newStudent')
+    signInAs(OUTSIDER_ID)
     const asClub = s().createEvent(arshEvent({ hostType: 'club', hostId: 'e-club', hostName: 'Hoagie Club' }))
     expect(asClub.ok).toBe(false)
     const asOther = s().createEvent(arshEvent()) // hostId u-arsh but current user is guest
@@ -143,7 +209,7 @@ describe('authorization guards (defense in depth)', () => {
 
   it('only a club admin can approve members', () => {
     // Guest is not an admin of Hoagie Club - approval must be refused and a no-op.
-    s().setViewAs('newStudent')
+    signInAs(OUTSIDER_ID)
     const r = s().approveMember('e-club', 'u-theo')
     expect(r.ok).toBe(false)
     const club = s().clubs.find((c) => c.id === 'e-club')!
@@ -153,11 +219,11 @@ describe('authorization guards (defense in depth)', () => {
 
   it('transferAdmin requires being an admin and a member target', () => {
     // A non-admin cannot transfer.
-    s().setViewAs('newStudent')
+    signInAs(OUTSIDER_ID)
     expect(s().transferAdmin('e-club', 'u-maya').ok).toBe(false)
 
     // Arsh (admin) can hand off to a member (u-maya); afterwards arsh is no longer admin.
-    s().setViewAs('me')
+    signInAs('u-arsh')
     expect(s().transferAdmin('e-club', 'u-maya').ok).toBe(true)
     const club = s().clubs.find((c) => c.id === 'e-club')!
     expect(club.adminIds).toContain('u-maya')
@@ -218,18 +284,18 @@ describe('updateEvent time handling', () => {
     if (!created.ok) throw new Error('setup failed')
     const id = created.event.id
     s().rsvp(id) // arsh takes the single seat
-    s().setViewAs('newStudent')
+    signInAs(OUTSIDER_ID)
     s().rsvp(id) // guest waitlisted
-    expect(s().events.find((e) => e.id === id)!.waitlistIds).toContain('u-guest')
+    expect(s().events.find((e) => e.id === id)!.waitlistIds).toContain(OUTSIDER_ID)
 
-    s().setViewAs('me')
+    signInAs('u-arsh')
     s().updateEvent(id, { capacity: 2 })
     const ev = s().events.find((e) => e.id === id)!
-    expect(ev.attendeeIds).toContain('u-guest')
-    expect(ev.waitlistIds).not.toContain('u-guest')
-    expect(s().users.find((u) => u.id === 'u-guest')!.rsvps).toContain(id)
+    expect(ev.attendeeIds).toContain(OUTSIDER_ID)
+    expect(ev.waitlistIds).not.toContain(OUTSIDER_ID)
+    expect(s().users.find((u) => u.id === OUTSIDER_ID)!.rsvps).toContain(id)
     expect(
-      s().notifications.some((n) => n.userId === 'u-guest' && n.kind === 'promotedFromWaitlist'),
+      s().notifications.some((n) => n.userId === OUTSIDER_ID && n.kind === 'promotedFromWaitlist'),
     ).toBe(true)
   })
 })
@@ -241,23 +307,23 @@ describe('deleteEvent', () => {
     const id = created.event.id
     s().rsvp(id) // arsh going
     s().toggleSave(id) // arsh saves it
-    s().setViewAs('newStudent')
+    signInAs(OUTSIDER_ID)
     s().rsvp(id) // guest going
-    s().setViewAs('me')
+    signInAs('u-arsh')
 
     expect(s().deleteEvent(id).ok).toBe(true)
     expect(s().events.find((e) => e.id === id)).toBeUndefined()
     expect(s().isSaved(id)).toBe(false) // stale saved id cleaned up
-    expect(s().users.find((u) => u.id === 'u-guest')!.rsvps).not.toContain(id)
+    expect(s().users.find((u) => u.id === OUTSIDER_ID)!.rsvps).not.toContain(id)
     expect(
-      s().notifications.some((n) => n.userId === 'u-guest' && n.title === 'Event canceled'),
+      s().notifications.some((n) => n.userId === OUTSIDER_ID && n.title === 'Event canceled'),
     ).toBe(true)
   })
 
   it('refuses deletion by a non-manager', () => {
     const created = s().createEvent(arshEvent())
     if (!created.ok) throw new Error('setup failed')
-    s().setViewAs('newStudent')
+    signInAs(OUTSIDER_ID)
     expect(s().deleteEvent(created.event.id).ok).toBe(false)
     expect(s().events.find((e) => e.id === created.event.id)).toBeTruthy()
   })
@@ -282,17 +348,17 @@ describe('createEvent validation', () => {
 describe('notifications fan-out', () => {
   it('notifies followers of a host when it posts a visible event', () => {
     // Guest follows Hoagie Club.
-    s().setViewAs('newStudent')
+    signInAs(OUTSIDER_ID)
     s().toggleFollow('e-club')
 
     // Arsh (an admin of Hoagie Club) posts an open event as the club.
-    s().setViewAs('me')
+    signInAs('u-arsh')
     const created = s().createEvent(
       arshEvent({ hostType: 'club', hostId: 'e-club', hostName: 'Hoagie Club' }),
     )
     if (!created.ok) throw new Error('setup failed')
 
-    s().setViewAs('newStudent')
+    signInAs(OUTSIDER_ID)
     const got = s().myNotifications().find((n) => n.eventId === created.event.id)
     expect(got?.kind).toBe('newEventFromFollowed')
   })
@@ -318,7 +384,7 @@ describe('notifications fan-out', () => {
     if (!created.ok) throw new Error('setup failed')
 
     // A student with no Hoagie Club badge requests to attend -> pending.
-    s().setViewAs('newStudent')
+    signInAs(OUTSIDER_ID)
     const r = s().applyToEvent(created.event.id)
     expect(r.ok && r.status).toBe('pending')
 
@@ -358,12 +424,12 @@ describe('event comments', () => {
     expect(first[0].body).toBe('Hello there') // trimmed
     const arshComment = first[0].id
 
-    s().setViewAs('newStudent')
+    signInAs(OUTSIDER_ID)
     expect(s().addComment(id, 'me too').ok).toBe(true) // open event -> guest can post
     expect(s().deleteComment(arshComment).ok).toBe(false) // not the author
     expect(s().commentsForEvent(id)).toHaveLength(2)
 
-    s().setViewAs('me')
+    signInAs('u-arsh')
     expect(s().deleteComment(arshComment).ok).toBe(true) // author deletes their own
     expect(s().commentsForEvent(id).some((c) => c.id === arshComment)).toBe(false)
   })
@@ -372,7 +438,7 @@ describe('event comments', () => {
     const created = s().createEvent(arshEvent({ audience: { kind: 'people', userIds: ['u-maya'] } }))
     if (!created.ok) throw new Error('setup failed')
     expect(s().addComment(created.event.id, '   ').ok).toBe(false)
-    s().setViewAs('newStudent')
+    signInAs(OUTSIDER_ID)
     expect(s().addComment(created.event.id, 'sneaky').ok).toBe(false)
   })
 
@@ -381,7 +447,7 @@ describe('event comments', () => {
       arshEvent({ hostType: 'club', hostId: 'e-club', hostName: 'Hoagie Club' }),
     )
     if (!created.ok) throw new Error('setup failed')
-    s().setViewAs('newStudent')
+    signInAs(OUTSIDER_ID)
     s().addComment(created.event.id, 'quick question!')
     const notif = s().notifications.find(
       (n) => n.userId === 'u-arsh' && n.kind === 'newComment' && n.eventId === created.event.id,
@@ -393,10 +459,10 @@ describe('event comments', () => {
     const created = s().createEvent(arshEvent())
     if (!created.ok) throw new Error('setup failed')
     const id = created.event.id
-    s().setViewAs('newStudent')
+    signInAs(OUTSIDER_ID)
     s().addComment(id, 'guest comment')
     const guestComment = s().commentsForEvent(id)[0]
-    s().setViewAs('me') // arsh hosts this event
+    signInAs('u-arsh') // arsh hosts this event
     expect(s().deleteComment(guestComment.id).ok).toBe(true)
   })
 })
@@ -405,7 +471,7 @@ describe('per-user follows and saves are isolated by viewer', () => {
   it('keeps follow state separate across viewAs', () => {
     s().toggleFollow('cannon') // as arsh
     expect(s().isFollowing('cannon')).toBe(true)
-    s().setViewAs('newStudent')
+    signInAs(OUTSIDER_ID)
     expect(s().isFollowing('cannon')).toBe(false)
   })
 
@@ -428,7 +494,7 @@ describe('per-user follows and saves are isolated by viewer', () => {
     s().toggleSave(anyEvent.id)
     expect(s().isSaved(anyEvent.id)).toBe(true)
     expect(s().savedEvents().map((e) => e.id)).toContain(anyEvent.id)
-    s().setViewAs('newStudent')
+    signInAs(OUTSIDER_ID)
     expect(s().isSaved(anyEvent.id)).toBe(false)
   })
 })

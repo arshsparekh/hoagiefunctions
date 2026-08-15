@@ -1,7 +1,9 @@
 import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { useStore } from './store'
 import AppShell from './components/AppShell'
 import Home from './pages/Home'
+import SignIn from './pages/SignIn'
 
 // Home is eager (it's the landing screen). Everything else is code-split so the
 // initial bundle stays small - the heavy Leaflet map in particular only loads
@@ -27,6 +29,9 @@ function RouteFallback() {
 }
 
 export default function App() {
+  const signedIn = useStore((s) => s.sessionUserId !== null)
+  if (!signedIn) return <SignIn />
+
   return (
     <BrowserRouter>
       <Routes>

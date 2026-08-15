@@ -115,7 +115,6 @@ export default function Create() {
     return store.users
       .filter(
         (u) =>
-          u.id !== 'u-guest' &&
           u.id !== me.id &&
           !invitees.includes(u.id) &&
           (q === '' || u.name.toLowerCase().includes(q)),

@@ -43,10 +43,10 @@ export default function Search() {
         c.name.toLowerCase().includes(query) || c.description.toLowerCase().includes(query),
     )
     const people = store.users.filter(
-      (u: User) => u.id !== 'u-guest' && u.name.toLowerCase().includes(query),
+      (u: User) => u.id !== me.id && u.name.toLowerCase().includes(query),
     )
     return { events, clubs, people }
-  }, [query, store])
+  }, [query, store, me.id])
 
   const total = events.length + clubs.length + people.length
 

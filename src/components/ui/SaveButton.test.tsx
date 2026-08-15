@@ -5,7 +5,8 @@ import { useStore } from '../../store'
 import SaveButton from './SaveButton'
 
 beforeEach(() => {
-  useStore.getState().resetDemo()
+  useStore.getState().resetWorld()
+  useStore.setState({ sessionUserId: 'u-arsh' })
 })
 
 describe('SaveButton', () => {

@@ -22,7 +22,6 @@ import {
   events as seedEvents,
   buildings,
   tags,
-  CURRENT_USER_ID,
   buildingById,
   tagById,
 } from './data/seed'
@@ -34,6 +33,7 @@ import type {
   EventApplicant,
   EventComment,
   ApplicantStatus,
+  ClassYear,
 } from './data/seed'
 import { canSeeEvent, canManageEvent } from './lib/visibility'
 import {
@@ -50,41 +50,13 @@ import type { AppNotification, NotificationKind } from './lib/notifications'
 export { buildings, tags, buildingById, tagById }
 
 // ---------------------------------------------------------------------------
-// viewAs - pick the EFFECTIVE current user so we can demo perspectives without
-// a login flow. Each mode maps to a concrete user id.
-// ---------------------------------------------------------------------------
-
-export type ViewAs = 'me' | 'clubAdmin' | 'newStudent'
-
-const GUEST_ID = 'u-guest'
-
-const VIEW_AS_TO_USER: Record<ViewAs, string> = {
-  me: 'u-arsh', // eating-club member + E-Club admin
-  clubAdmin: 'u-devin', // admin of Cannon and Table Tennis
-  newStudent: GUEST_ID, // synthetic guest, no memberships
-}
-
-/** A fresh synthetic guest - class of 2029, no clubs, no history. */
-function makeGuest(): User {
-  return {
-    id: GUEST_ID,
-    name: 'Guest Student',
-    classYear: 2029,
-    avatarColor: '#808080',
-    eatingClubId: undefined,
-    clubMemberships: [],
-    adminOf: [],
-    rsvps: [],
-    applications: [],
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Fresh, deep-cloned collections. The imported seed arrays stay pristine so
-// resetDemo() can always clone a clean copy.
+// resetWorld() can always clone a clean copy. The seed users are the "campus" -
+// the students a signed-in user shares the world with; the signed-in account is
+// added on top at sign-up.
 // ---------------------------------------------------------------------------
 
-const freshUsers = (): User[] => [...structuredClone(seedUsers), makeGuest()]
+const freshUsers = (): User[] => structuredClone(seedUsers)
 const freshClubs = (): Club[] => structuredClone(seedClubs)
 const freshEvents = (): CampusEvent[] => structuredClone(seedEvents)
 
@@ -122,31 +94,29 @@ function makeNotif(
 }
 
 /**
- * A small, data-derived set of starter notifications so the bell is alive on
- * first open: "new from a club you're in". Derived entirely from real seed ids,
+ * A small, data-derived set of starter notifications so a new user's bell is
+ * alive on first open: "new from a club you're in". Derived from real event ids,
  * so it never dangles.
  */
-function seedNotifications(usersArr: User[], eventsArr: CampusEvent[]): AppNotification[] {
-  const me = usersArr.find((u) => u.id === CURRENT_USER_ID)
-  if (!me) return []
+function starterNotifications(user: User, eventsArr: CampusEvent[]): AppNotification[] {
   const myClubIds = new Set<string>([
-    ...me.clubMemberships.filter((m) => m.status === 'member').map((m) => m.clubId),
-    ...me.adminOf,
-    ...(me.eatingClubId ? [me.eatingClubId] : []),
+    ...user.clubMemberships.filter((m) => m.status === 'member').map((m) => m.clubId),
+    ...user.adminOf,
+    ...(user.eatingClubId ? [user.eatingClubId] : []),
   ])
   const soon = eventsArr
     .filter(
       (e) =>
         (e.hostType === 'club' || e.hostType === 'eatingClub') &&
         myClubIds.has(e.hostId) &&
-        !e.attendeeIds.includes(me.id) &&
+        !e.attendeeIds.includes(user.id) &&
         new Date(e.start).getTime() >= Date.now(),
     )
     .sort((a, b) => (a.start < b.start ? -1 : 1))
-    .slice(0, 2)
+    .slice(0, 3)
 
   return soon.map((e, i) => ({
-    ...makeNotif(me.id, 'newEventFromFollowed', {
+    ...makeNotif(user.id, 'newEventFromFollowed', {
       title: `New from ${e.hostName}`,
       body: e.title,
       eventId: e.id,
@@ -185,6 +155,76 @@ function seedComments(eventsArr: CampusEvent[]): EventComment[] {
     })
   })
   return out
+}
+
+// ---------------------------------------------------------------------------
+// Accounts - a lightweight, client-only "sign in" (no backend). A student enters
+// their name, class year, and a princeton.edu email; we mint a local account with
+// an auto-generated set of club credentials (an eating club, a club they belong
+// to, and one club they run) so there's something to explore. Accounts live in
+// localStorage keyed by email, so a returning user signs back in with just email.
+// ---------------------------------------------------------------------------
+
+export interface SignUpInput {
+  firstName: string
+  lastName: string
+  classYear: number
+  email: string
+}
+
+/** Deterministic hash so the same email always mints the same look + clubs. */
+function hashStr(s: string): number {
+  let h = 0
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0
+  return h
+}
+
+// Non-pink avatar colors (pink is the brand and reserved for UI, not avatars).
+const ACCOUNT_COLORS = [
+  '#0EA5E9', '#DE7548', '#3366FF', '#52BD95', '#8B5CF6',
+  '#0891B2', '#CA8A04', '#16A34A', '#E8562C', '#2563EB',
+]
+
+interface GeneratedAccount {
+  user: User
+  memberClubIds: string[]
+  adminClubId: string
+}
+
+/** Build a believable new-student profile from the entered fields + the clubs. */
+function generateAccount(input: SignUpInput, clubs: Club[]): GeneratedAccount {
+  const eating = clubs.filter((c) => c.kind === 'eatingClub')
+  const regular = clubs.filter((c) => c.kind === 'club')
+  const h = hashStr(input.email.toLowerCase())
+  const pick = <T,>(arr: T[], shift: number): T => arr[(h >>> shift) % arr.length]
+
+  const eatingClub = pick(eating, 0)
+  const memberClub = pick(regular, 3)
+  let adminClub = pick(regular, 9)
+  if (adminClub.id === memberClub.id) {
+    adminClub = regular[(regular.indexOf(adminClub) + 1) % regular.length]
+  }
+
+  const user: User = {
+    id: uid('u-acct'),
+    name: `${input.firstName} ${input.lastName}`.trim(),
+    classYear: input.classYear as ClassYear,
+    avatarColor: ACCOUNT_COLORS[(h >>> 5) % ACCOUNT_COLORS.length],
+    eatingClubId: eatingClub.id,
+    clubMemberships: [
+      { clubId: eatingClub.id, status: 'member' },
+      { clubId: memberClub.id, status: 'member' },
+      { clubId: adminClub.id, status: 'member' },
+    ],
+    adminOf: [adminClub.id],
+    rsvps: [],
+    applications: [],
+  }
+  return {
+    user,
+    memberClubIds: [eatingClub.id, memberClub.id, adminClub.id],
+    adminClubId: adminClub.id,
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -236,9 +276,9 @@ export interface AppState {
   /** Ad-hoc locations created during the session (persisted; merged into buildingById). */
   customBuildings: Building[]
 
-  // Identity / perspective
-  currentUserId: string
-  viewAs: ViewAs
+  // Identity - the signed-in account (null = logged out), and email -> userId.
+  sessionUserId: string | null
+  accounts: Record<string, string>
 
   // Per-user social graph + activity (keyed by user id so each viewAs is coherent)
   followingByUser: Record<string, string[]>
@@ -248,6 +288,8 @@ export interface AppState {
 
   // Selectors
   currentUser: () => User
+  isSignedIn: () => boolean
+  accountExists: (email: string) => boolean
   eventsSorted: () => CampusEvent[]
   visibleEvents: () => CampusEvent[]
   recommendedEvents: () => CampusEvent[]
@@ -263,7 +305,9 @@ export interface AppState {
   commentsForEvent: (eventId: string) => EventComment[]
 
   // Actions
-  setViewAs: (v: ViewAs) => void
+  signUp: (input: SignUpInput) => ActionResult
+  signIn: (email: string) => ActionResult
+  signOut: () => void
   rsvp: (eventId: string) => ActionResult
   cancelRsvp: (eventId: string) => ActionResult
   applyToEvent: (eventId: string) => ApplyResult
@@ -285,7 +329,7 @@ export interface AppState {
   markAllNotificationsRead: () => void
   transferAdmin: (clubId: string, toUserId: string) => ActionResult
   addBuilding: (b: Building) => void
-  resetDemo: () => void
+  resetWorld: () => void
 }
 
 // ---------------------------------------------------------------------------
@@ -365,18 +409,17 @@ function makeStorage() {
 // ---------------------------------------------------------------------------
 
 function initialState() {
-  const users = freshUsers()
   const events = freshEvents()
   return {
-    users,
+    users: freshUsers(),
     clubs: freshClubs(),
     events,
     customBuildings: [] as Building[],
-    currentUserId: CURRENT_USER_ID,
-    viewAs: 'me' as ViewAs,
+    sessionUserId: null as string | null,
+    accounts: {} as Record<string, string>,
     followingByUser: {} as Record<string, string[]>,
     savedByUser: {} as Record<string, string[]>,
-    notifications: seedNotifications(users, events),
+    notifications: [] as AppNotification[],
     comments: seedComments(events),
   }
 }
@@ -388,11 +431,14 @@ export const useStore = create<AppState>()(
 
       // --- Selectors ---------------------------------------------------------
 
+      // The signed-in user. Falls back to the first campus user when logged out so
+      // selectors never crash (the app gates rendering behind sign-in anyway).
       currentUser: () => {
-        const { viewAs, users } = get()
-        const id = VIEW_AS_TO_USER[viewAs]
-        return users.find((u) => u.id === id) ?? users[0]
+        const { sessionUserId, users } = get()
+        return users.find((u) => u.id === sessionUserId) ?? users[0]
       },
+      isSignedIn: () => get().sessionUserId !== null,
+      accountExists: (email) => Boolean(get().accounts[email.trim().toLowerCase()]),
 
       eventsSorted: () =>
         [...get().events].sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : 0)),
@@ -453,7 +499,39 @@ export const useStore = create<AppState>()(
 
       // --- Actions -----------------------------------------------------------
 
-      setViewAs: (v) => set({ viewAs: v, currentUserId: VIEW_AS_TO_USER[v] }),
+      signUp: (input) => {
+        const email = input.email.trim().toLowerCase()
+        if (get().accounts[email]) {
+          return { ok: false, reason: 'An account with that email already exists - just sign in.' }
+        }
+        const { user, memberClubIds, adminClubId } = generateAccount(input, get().clubs)
+        set((state) => ({
+          users: [...state.users, user],
+          clubs: state.clubs.map((c) => {
+            let next = c
+            if (memberClubIds.includes(c.id) && !c.memberIds.includes(user.id)) {
+              next = { ...next, memberIds: [...next.memberIds, user.id] }
+            }
+            if (c.id === adminClubId && !c.adminIds.includes(user.id)) {
+              next = { ...next, adminIds: [...next.adminIds, user.id] }
+            }
+            return next
+          }),
+          accounts: { ...state.accounts, [email]: user.id },
+          sessionUserId: user.id,
+          notifications: [...state.notifications, ...starterNotifications(user, state.events)],
+        }))
+        return { ok: true }
+      },
+
+      signIn: (email) => {
+        const id = get().accounts[email.trim().toLowerCase()]
+        if (!id) return { ok: false, reason: 'No account found for that email.' }
+        set({ sessionUserId: id })
+        return { ok: true }
+      },
+
+      signOut: () => set({ sessionUserId: null }),
 
       rsvp: (eventId) => {
         const me = get().currentUser()
@@ -1133,19 +1211,22 @@ export const useStore = create<AppState>()(
         )
       },
 
-      resetDemo: () => set({ ...initialState() }),
+      // Wipe back to a clean campus with no accounts / no session (dev/test escape).
+      resetWorld: () => set({ ...initialState() }),
     }),
     {
       name: 'hoagiefunctions-state',
-      version: 1,
+      version: 2,
+      // v1 was the demo (viewAs/currentUserId); discard it so v2 starts logged out.
+      migrate: () => ({}) as Partial<AppState>,
       storage: createJSONStorage(makeStorage),
       partialize: (s) => ({
         users: s.users,
         clubs: s.clubs,
         events: s.events,
         customBuildings: s.customBuildings,
-        currentUserId: s.currentUserId,
-        viewAs: s.viewAs,
+        sessionUserId: s.sessionUserId,
+        accounts: s.accounts,
         followingByUser: s.followingByUser,
         savedByUser: s.savedByUser,
         notifications: s.notifications,

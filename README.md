@@ -8,9 +8,10 @@ Hoagie style. Browse a personalized feed, see what's happening on a live campus
 map, RSVP or request a guestlist spot, and - if you run a club - post events,
 approve members, and check people in at the door.
 
-> Demo identity is simulated with a "View as" switcher (Arsh '28 / a club admin /
-> a new student). Real deployment signs in with Princeton netID / Hoagie SSO -
-> see [`supabase/README.md`](supabase/README.md).
+> Sign in with a princeton.edu email (client-only, no backend): a new email sets
+> up an account with auto-generated club credentials; a returning email signs you
+> straight back in. Everything you do persists in the browser. A real deployment
+> would swap this for Princeton netID / Hoagie SSO - see [`supabase/SETUP.md`](supabase/SETUP.md).
 
 ## What it does
 

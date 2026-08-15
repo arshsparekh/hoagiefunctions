@@ -3,7 +3,6 @@ import { Outlet, useLocation } from 'react-router-dom'
 import TopNav from './TopNav'
 import BottomTabBar from './BottomTabBar'
 import Toaster from './ui/Toaster'
-import DemoControls from './DemoControls'
 import ErrorBoundary from './ErrorBoundary'
 
 /**
@@ -49,7 +48,6 @@ export default function AppShell() {
       </main>
       <BottomTabBar />
       <Toaster />
-      <DemoControls />
     </div>
   )
 }

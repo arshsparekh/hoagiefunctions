@@ -21,6 +21,7 @@ export default function EditEventModal({ event, onClose }: { event: CampusEvent;
   const clubs = useStore((s) => s.clubs)
   const push = useToasts((s) => s.push)
 
+  const meId = useStore((s) => s.currentUser().id)
   const hostClub =
     event.hostType !== 'individual' ? clubs.find((c) => c.id === event.hostId) : undefined
   const userById = new Map(users.map((u) => [u.id, u]))
@@ -274,7 +275,7 @@ export default function EditEventModal({ event, onClose }: { event: CampusEvent;
             >
               <option value="">Add a person…</option>
               {users
-                .filter((u) => u.id !== 'u-guest' && !invitees.includes(u.id))
+                .filter((u) => u.id !== meId && !invitees.includes(u.id))
                 .map((u) => (
                   <option key={u.id} value={u.id}>
                     {u.name}

@@ -56,7 +56,17 @@ export default function Profile() {
   const badgeClubs = [...badgeClubIds].map((id) => clubById.get(id)).filter((c): c is Club => Boolean(c))
 
   return (
-    <div className="mx-auto max-w-2xl px-4 pt-6 sm:px-6">
+    <div className="mx-auto max-w-2xl px-4 pt-4 sm:px-6">
+      <div className="mb-3 flex justify-end">
+        <button
+          type="button"
+          onClick={() => store.signOut()}
+          className="text-[13px] font-medium text-muted transition-colors hover:text-text"
+        >
+          Sign out
+        </button>
+      </div>
+
       {/* Identity */}
       <div className="flex items-start gap-4">
         <Avatar user={me} size={64} />

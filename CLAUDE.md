@@ -190,13 +190,14 @@ Maps use **react-leaflet** with OpenStreetMap tiles. Two rules that keep it work
 | `/search` | Free-text search across `visibleEvents()`, clubs, and people, grouped. |
 | `/notifications` | Per-user activity feed (`myNotifications()`); marks unread as read on view. |
 
-### Demo mode & polish
+### Sign-in gate & polish
 
-- **`DemoControls`** (mounted in `AppShell`, bottom-right) is a dev-only floating
-  panel: a "View as" switch (`setViewAs`), a repo link, and "Reset demo"
-  (`resetDemo`, which also clears the persisted localStorage state). It collapses to
-  a small "Demo" pill so it stays out of frame. It's the one piece of non-product UI
-  - keep it clearly a dev tool.
+- **`SignIn`** (`src/pages/SignIn.tsx`) is a full-screen, client-only auth gate.
+  `App.tsx` renders it whenever `sessionUserId === null`; otherwise the routed app
+  shows. A princeton.edu email that's new opens a name + class-year (2027-2030)
+  step and `signUp`s (minting auto-generated club credentials); a known email
+  `signIn`s straight through. "Sign out" lives on the Profile. There is **no** demo
+  "View as" switcher anymore.
 - Routes fade in via `.hf-page` (opacity only - never transform, so Leaflet layout
   is undisturbed) and scroll to top on navigation, both handled in `AppShell`.
 - First app paint shows `SkeletonEventCard`s on Home (guarded by a module-level
@@ -205,7 +206,7 @@ Maps use **react-leaflet** with OpenStreetMap tiles. Two rules that keep it work
 
 Participation/admin state on these pages is **derived from the store** (e.g.
 `event.attendeeIds.includes(me.id)`, `club.pendingIds`), not local component state,
-so it stays correct as actions mutate the store and across `viewAs` switches.
+so it stays correct as actions mutate the store.
 
 ## Routing
 
@@ -233,15 +234,19 @@ Global state is a single Zustand store in **`src/store.ts`**, built on the demo
 data in **`src/data/seed.ts`**. Rules:
 
 - **`seed.ts` is the only place types and seed data are defined.** The store
-  imports `users`, `clubs`, `events`, `buildings`, `tags`, `CURRENT_USER_ID`, the
-  `*ById` lookups, and every interface (`User`, `Club`, `CampusEvent`, …) from it -
-  never redefine a type or re-create seed data elsewhere.
+  imports `users`, `clubs`, `events`, `buildings`, `tags`, the `*ById` lookups, and
+  every interface (`User`, `Club`, `CampusEvent`, …) from it - never redefine a type
+  or re-create seed data elsewhere. The seed users/clubs/events are the "campus" a
+  signed-in student shares the world with (NPCs).
 - The store **deep-clones** `users`/`clubs`/`events` from the seed on init (and on
-  `resetDemo()`), so the imported seed arrays stay pristine. `buildings`/`tags` are
+  `resetWorld()`), so the imported seed arrays stay pristine. `buildings`/`tags` are
   static and used directly.
-- **`viewAs`** (`'me' | 'clubAdmin' | 'newStudent'`) selects the *effective* current
-  user so we can demo perspectives without auth. Resolve the user with the
-  `currentUser()` selector - don't read `users[0]` or hardcode `u-arsh`.
+- **Identity is a client-only account system** (no backend): `signUp` mints a user
+  (with auto-generated club credentials) from a name + class year + princeton.edu
+  email and adds it to `users`; `accounts` maps email→userId so `signIn` returns a
+  known user; `sessionUserId` is the active account (null = logged out, gated by
+  `App.tsx`). Resolve the user with the `currentUser()` selector - don't read
+  `users[0]` or hardcode an id.
 - The **badge rule** is load-bearing: a confirmed member of a club/eating-club is
   auto-accepted to that host's guestlist events (`applyToEvent`), and approving a
   member grants that badge. Keep `applyToEvent`, `approveMember`, and the eating-club
@@ -250,10 +255,11 @@ data in **`src/data/seed.ts`**. Rules:
   in `createEvent`; keep that guard when adding event-creation UI.
 - Prefer local `useState` for view-only UI; reach for the store only for data shared
   across routes. Actions are immutable-friendly (new arrays/objects via `set`).
-- **Persistence:** the store is wrapped in `persist` (localStorage, with an
-  in-memory fallback for tests). `partialize` stores only data; `onRehydrateStorage`
-  re-hydrates custom buildings into `buildingById`. `resetDemo()` re-seeds a clean
-  state (and thereby clears storage).
+- **Persistence:** the store is wrapped in `persist` (localStorage, version 2, with
+  an in-memory fallback for tests). `partialize` stores only data (incl.
+  `accounts`/`sessionUserId`), so a signed-in user stays signed in and their data
+  survives reloads. `onRehydrateStorage` re-hydrates custom buildings into
+  `buildingById`. `resetWorld()` re-seeds a clean, logged-out state.
 - **Authorization is in the store, not just the UI.** Every privileged mutation
   (`updateEvent`, `deleteEvent`, `toggleCheckIn`, `approveApplicant`/`denyApplicant`,
   `approveMember`/`denyMember`, `transferAdmin`, and club-posting in `createEvent`)

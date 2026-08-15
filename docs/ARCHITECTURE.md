@@ -38,10 +38,11 @@ docs/                 This file + SECURITY.md.
   `followingByUser`, `savedByUser`, and a flat `notifications` list.
 - **Persistence:** wrapped in `persist` (localStorage, with an in-memory fallback
   for tests/SSR). `partialize` stores only data; `onRehydrateStorage` re-hydrates
-  ad-hoc locations into the shared `buildingById` lookup. `resetDemo()` clears it.
-- **Identity:** a `viewAs` switch maps to a concrete user id so perspectives can
-  be demoed without a login. All per-user data is keyed by the effective user id,
-  so follows/saves/notifications stay coherent when you switch.
+  ad-hoc locations into the shared `buildingById` lookup. `resetWorld()` clears it.
+- **Identity:** a client-only account system - `signUp`/`signIn`/`signOut` keyed by
+  a princeton.edu email in `accounts`, with the active user in `sessionUserId`.
+  Sign-up mints a user with auto-generated club credentials and adds them to the
+  seed "campus." All per-user data is keyed by the signed-in user id.
 - **Selectors** (`visibleEvents`, `recommendedEvents`, `myNotifications`, …)
   derive views; components that need a fresh array subscribe to the whole store
   and derive in render (a new-array selector would thrash `useSyncExternalStore`).

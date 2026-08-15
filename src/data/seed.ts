@@ -13,7 +13,7 @@
 // Types
 // ----------------------------------------------------------------------------
 
-export type ClassYear = 2026 | 2027 | 2028 | 2029;
+export type ClassYear = 2026 | 2027 | 2028 | 2029 | 2030;
 
 export type FillName =
   | 'neutral' | 'blue' | 'red' | 'orange' | 'yellow' | 'green' | 'teal' | 'purple' | 'indigo';

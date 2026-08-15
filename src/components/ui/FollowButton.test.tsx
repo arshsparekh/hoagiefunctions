@@ -5,7 +5,8 @@ import { useStore } from '../../store'
 import FollowButton from './FollowButton'
 
 beforeEach(() => {
-  useStore.getState().resetDemo()
+  useStore.getState().resetWorld()
+  useStore.setState({ sessionUserId: 'u-arsh' })
 })
 
 describe('FollowButton', () => {

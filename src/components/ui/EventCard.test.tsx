@@ -6,7 +6,8 @@ import { useStore } from '../../store'
 import EventCard from './EventCard'
 
 beforeEach(() => {
-  useStore.getState().resetDemo()
+  useStore.getState().resetWorld()
+  useStore.setState({ sessionUserId: 'u-arsh' })
 })
 
 describe('EventCard', () => {
